@@ -16,14 +16,6 @@
 
 <br />
 
-## 📑 Quick Navigation
-- [🚀 Phase 1: Foundation, Local LLM Setup & Interactive Loop](#-phase-1---foundation-local-llm-setup--interactive-chat-loop)
-  - [1. Executive Summary](#1-executive-summary)
-  - [2. Deep-Dive Architectural Concepts (The "Why")](#2-deep-dive-architectural-concepts-the-why)
-  - [3. Terminal Command Reference](#3-terminal-command-reference)
-  - [4. Code Implementation & Walkthrough](#4-code-implementation--walkthrough)
-  - [5. Engineering Analysis: Identified Cons & Trade-Offs](#5-engineering-analysis-identified-cons--trade-offs)
-  - [6. The Bridge to Phase 2](#6-the-bridge-to-phase-2)
 
 ---
 
