@@ -217,3 +217,27 @@ To resolve **Defect 1**, the next milestone will introduce **Context & Memory En
 2. Append user input turns (`role: "user"`).
 3. Append assistant responses (`role: "assistant"`).
 4. Send the accumulated history array on every inference pass to enable multi-turn context retention.
+
+---
+## 🧠 [Phase 2] - Day 2: Memory Engineering & Handling LLM Statelessness
+
+> [!IMPORTANT]
+> **Milestone Goal:** Eliminate the assistant's short-term amnesia by maintaining an accumulating conversation history array (`messages = []`) across turns.
+
+### 1. 📋 What We Built Today
+We upgraded our baseline chatbot from a stateless single-turn responder into a stateful multi-turn conversational assistant. By capturing both `"user"` inputs and `"assistant"` replies inside a persistent list outside the main execution loop, the model can now reference earlier facts, names, and context within the active session.
+
+---
+
+### 2. 💡 Core Concepts: The "Why" Behind Each Decision
+
+- **Statelessness of LLMs**
+  - Large Language Models do not store session memory on their servers. The moment an API request completes, the model wipes its working memory clean—every new API call is treated like a brand-new conversation from a stranger.
+- **The Context Illusion (How ChatGPT/Claude Remember)**
+  - Applications simulate memory by recording the entire back-and-forth conversation locally and sending the **full message array** back to the model on every single turn. Role tags (`"user"` and `"assistant"`) let the LLM distinguish who said what.
+- **The Context Window Catch**
+  - Every LLM has a strict maximum token limit it can process in a single request (its **Context Window**). Because the entire message list is resent every turn, token usage grows continuously—eventually slowing down inference on CPU hardware, increasing API costs, or truncating older messages.
+
+```text
+Turn 1: [ User("Hi, I'm Abhishek") ] ──► LLM ──► Assistant("Hello Abhishek!")
+Turn 2: [ User("Hi..."), Assistant("Hello..."), User("What's my name?") ] ──► LLM ──► Assistant("Your name is Abhishek.")
