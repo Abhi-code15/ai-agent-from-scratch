@@ -233,9 +233,7 @@ We upgraded our baseline chatbot from a stateless single-turn responder into a s
 ```text
 Turn 1: [ User("Hi, I'm Abhishek") ] ──► LLM ──► Assistant("Hello Abhishek!")
 Turn 2: [ User("Hi..."), Assistant("Hello..."), User("What's my name?") ] ──► LLM ──► Assistant("Your name is Abhishek.")
-
-
----
+```
 
 ---
 
@@ -317,3 +315,5 @@ while True:
     print("Assistant: " + reply)
 
     messages.append({"role": "assistant", "content": reply})
+
+
