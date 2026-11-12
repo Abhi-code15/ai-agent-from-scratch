@@ -233,3 +233,87 @@ We upgraded our baseline chatbot from a stateless single-turn responder into a s
 ```text
 Turn 1: [ User("Hi, I'm Abhishek") ] ──► LLM ──► Assistant("Hello Abhishek!")
 Turn 2: [ User("Hi..."), Assistant("Hello..."), User("What's my name?") ] ──► LLM ──► Assistant("Your name is Abhishek.")
+
+
+---
+
+---
+
+## 🎭 [Phase 3] - Day 3: System Prompts, Personas & RCTEF Framework
+
+> [!IMPORTANT]
+>
+> **Milestone Goal:** Control the assistant's personality, tone, and output structure by pinning a `"system"` role instruction at the top of the message history.
+
+### 1. 📋 What We Built Today
+We gave our stateful assistant a defined persona and strict behavioral boundaries. By initializing `messages` with a `"system"` dictionary before the chat loop starts, every API call now instructs `qwen2.5:1.5b` on *how* to respond before it reads what the user asked.
+
+---
+
+### 2. 💡 Core Concepts: The "Why" Behind Each Decision
+
+* **The `"system"` Role (Developer Instructions)**
+  * Unlike `"user"` (human queries) and `"assistant"` (AI replies), `"system"` (called `"developer"` in newer OpenAI specs) sets global behavioral rules hidden from the end user.
+* **Why It Goes Outside the Loop (Index `0`)**
+  * Placing the system message once at index `0` ensures it stays permanently pinned at the top of every request without duplicating tokens on every loop iteration.
+* **RCTEF Prompt Engineering Framework**
+  * **R**ole (Persona) $\rightarrow$ **C**ontext (Scenario) $\rightarrow$ **T**ask (Goal) $\rightarrow$ **E**xamples (Few-shot) $\rightarrow$ **F**ormat & Constraints (Length/style limits).
+
+---
+
+### 3. 💻 Code Implementation (`simple_ai_assistant.py`)
+
+```python
+import os
+from openai import OpenAI
+from dotenv import load_dotenv
+
+load_dotenv()
+
+client = OpenAI(
+    base_url=os.getenv("BASE_URL"),
+    api_key=os.getenv("API_KEY")
+)
+
+model_name = os.getenv("MODEL")
+
+SYSTEM_PROMPT = (
+    "Role: You are a concise, humble, and practical AI Engineering Mentor. "
+    "Context: You are helping a developer build AI agents from scratch in Python. "
+    "Task: Answer questions clearly with practical reasoning. "
+    "Constraints: Keep every response under 60 words. Use bullet points when listing steps."
+)
+
+# Pinned once at index 0 before the loop starts
+messages = [
+    {
+        "role": "system",
+        "content": SYSTEM_PROMPT
+    }
+]
+
+while True:
+    try:
+        user_input = input("\nUser: ").strip()
+    except (KeyboardInterrupt, EOFError):
+        print("\nSession ended.")
+        break
+
+    if user_input.lower() in ["exit", "quit", "bye", "goodbye"]:
+        print("Assistant: Goodbye!")
+        break
+
+    if not user_input:
+        continue
+
+    messages.append({"role": "user", "content": user_input})
+
+    response = client.chat.completions.create(
+        model=model_name,
+        messages=messages
+    )
+
+    reply = response.choices[0].message.content
+    print("Assistant: " + reply)
+
+    messages.append({"role": "assistant", "content": reply})
