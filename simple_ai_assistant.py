@@ -1,37 +1,32 @@
 import os
+import json
 from openai import OpenAI
 from dotenv import load_dotenv
+from tools import TOOLS, FUNCTION_NAME_TO_FUNCTION_MAP
 
 # 1. Load environment variables
 load_dotenv()
 
-# 2. Initialize client pointing to Ollama
+# 2. Initialize client
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
 )
 
 model_name = os.getenv("MODEL")
-print(f"--- Assistant Initialized with model: {model_name} ---")
-print("Type 'exit', 'quit', or 'bye' to end the conversation.\n")
+print(f"--- Tool-Enabled Assistant Initialized ({model_name}) ---")
+print("Type 'exit', 'quit', or 'bye' to end the session.\n")
 
-# 3. Define the System Prompt (RCTEF Framework)
 SYSTEM_PROMPT = (
-    "Role: You are a concise, humble, and practical AI Engineering Mentor. "
-    "Context: You are helping a developer build AI agents from scratch in Python. "
-    "Task: Answer questions clearly with practical reasoning. "
-    "Constraints: Keep every response under 60 words. Use bullet points when listing steps."
+    "Role: You are a helpful and concise AI Assistant with real-time tool access. "
+    "Task: Answer user questions accurately. Use the provided tools whenever external or real-time information (like live time or weather) is needed. "
+    "Constraints: Keep responses clear, concise, and factual."
 )
 
-# 4. Initialize conversation history with the System Prompt pinned at index 0
 messages = [
-    {
-        "role": "system",
-        "content": SYSTEM_PROMPT
-    }
+    {"role": "system", "content": SYSTEM_PROMPT}
 ]
 
-# 5. Interactive conversational loop
 while True:
     try:
         user_input = input("\nUser: ").strip()
@@ -46,23 +41,49 @@ while True:
     if not user_input:
         continue
 
-    # Append user message
-    messages.append({
-        "role": "user",
-        "content": user_input
-    })
+    messages.append({"role": "user", "content": user_input})
 
-    # Send entire history (System Prompt + Conversation)
+    # 3. First API Call: Send history + tool definitions
     response = client.chat.completions.create(
         model=model_name,
-        messages=messages
+        messages=messages,
+        tools=TOOLS
     )
 
-    reply = response.choices[0].message.content
-    print("Assistant: " + reply)
+    msg = response.choices[0].message
 
-    # Append assistant reply
-    messages.append({
-        "role": "assistant",
-        "content": reply
-    })
+    # 4. Check if the model decided to call any tools
+    if msg.tool_calls:
+        # Append the assistant's tool_call request message to history
+        messages.append(msg)
+
+        # Loop through every tool the model requested
+        for tool_call in msg.tool_calls:
+            func_name = tool_call.function.name
+            func_args = json.loads(tool_call.function.arguments or "{}")
+
+            # Look up and execute the local Python function
+            fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
+            result = fn(**func_args)
+
+            # Append the tool's output back to history with role="tool"
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result)
+            })
+
+        # 5. Second API Call: Let the LLM read the tool output and answer the user
+        second_response = client.chat.completions.create(
+            model=model_name,
+            messages=messages
+        )
+        final_reply = second_response.choices[0].message.content or ""
+        print("Assistant: " + final_reply)
+        messages.append({"role": "assistant", "content": final_reply})
+
+    else:
+        # Normal text reply (no tools needed)
+        reply = msg.content or ""
+        print("Assistant: " + reply)
+        messages.append({"role": "assistant", "content": reply})
