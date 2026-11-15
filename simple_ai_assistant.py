@@ -14,12 +14,16 @@ client = OpenAI(
 )
 
 model_name = os.getenv("MODEL")
-print(f"--- Tool-Enabled Assistant Initialized ({model_name}) ---")
+print(f"--- Agent Initialized with Chained Tools ({model_name}) ---")
 print("Type 'exit', 'quit', or 'bye' to end the session.\n")
 
+# Safety boundary: Maximum allowed model rounds per user query
+MAX_STEPS = 5
+
 SYSTEM_PROMPT = (
-    "Role: You are a helpful and concise AI Assistant with real-time tool access. "
-    "Task: Answer user questions accurately. Use the provided tools whenever external or real-time information (like live time or weather) is needed. "
+    "Role: You are a helpful, concise AI Agent with real-time tool access. "
+    "Task: Answer user questions accurately. Use the available tools when needed. "
+    "If a question requires multiple steps (like looking up a user's city first, then checking its weather), call the tools sequentially. "
     "Constraints: Keep responses clear, concise, and factual."
 )
 
@@ -43,47 +47,45 @@ while True:
 
     messages.append({"role": "user", "content": user_input})
 
-    # 3. First API Call: Send history + tool definitions
-    response = client.chat.completions.create(
-        model=model_name,
-        messages=messages,
-        tools=TOOLS
-    )
+    # The Agent Loop: Allows chained (sequential) tool calls up to MAX_STEPS
+    for step in range(MAX_STEPS):
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            tools=TOOLS
+        )
 
-    msg = response.choices[0].message
+        msg = response.choices[0].message
 
-    # 4. Check if the model decided to call any tools
-    if msg.tool_calls:
-        # Append the assistant's tool_call request message to history
+        # If no tool calls were requested, the model gave its final answer!
+        if not msg.tool_calls:
+            reply = msg.content or ""
+            print("Assistant: " + reply)
+            messages.append({"role": "assistant", "content": reply})
+            break
+
+        # Model requested tool call(s)
         messages.append(msg)
 
-        # Loop through every tool the model requested
         for tool_call in msg.tool_calls:
             func_name = tool_call.function.name
-            func_args = json.loads(tool_call.function.arguments or "{}")
+            try:
+                func_args = json.loads(tool_call.function.arguments or "{}")
+                fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
+                result = fn(**func_args)
+            except Exception as e:
+                # Catch any runtime/tool error and pass it back to the model politely
+                result = f"Error while running {func_name}: {e}"
 
-            # Look up and execute the local Python function
-            fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
-            result = fn(**func_args)
-
-            # Append the tool's output back to history with role="tool"
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
                 "content": str(result)
             })
 
-        # 5. Second API Call: Let the LLM read the tool output and answer the user
-        second_response = client.chat.completions.create(
-            model=model_name,
-            messages=messages
-        )
-        final_reply = second_response.choices[0].message.content or ""
-        print("Assistant: " + final_reply)
-        messages.append({"role": "assistant", "content": final_reply})
-
     else:
-        # Normal text reply (no tools needed)
-        reply = msg.content or ""
-        print("Assistant: " + reply)
-        messages.append({"role": "assistant", "content": reply})
+        # Python for-else: Only executes if loop finishes ALL steps without a 'break'
+        fallback_msg = "Sorry, I could not complete your request within the maximum allowed step limit."
+        print("Assistant: " + fallback_msg)
+        messages.append({"role": "assistant", "content": fallback_msg})
+

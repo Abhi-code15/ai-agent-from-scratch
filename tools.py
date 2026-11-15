@@ -16,6 +16,10 @@ def get_city_weather(city: str):
     response.raise_for_status()
     return response.text.strip()
 
+def get_user_city():
+    """Returns the city where the user lives."""
+    return "Bangalore"
+
 # ---------------------------------------------------------
 # 2. JSON Schema Definitions (The "Menu" sent to the LLM)
 # ---------------------------------------------------------
@@ -49,6 +53,18 @@ TOOLS = [
                 "required": ["city"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_user_city",
+            "description": "Returns the user's home city (e.g. Bangalore). MUST be called when user asks about 'where I live', 'my city', or their location.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
     }
 ]
 
@@ -58,5 +74,6 @@ TOOLS = [
 
 FUNCTION_NAME_TO_FUNCTION_MAP = {
     "get_current_time": get_current_time,
-    "get_city_weather": get_city_weather
+    "get_city_weather": get_city_weather,
+    "get_user_city": get_user_city
 }

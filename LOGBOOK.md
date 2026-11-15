@@ -596,10 +596,332 @@ We tested our assistant on an **Intel i3** with `qwen2.5:1.5b`:
 
 ---
 
-### 10. 🚀 What's Next? (The Bridge to Phase 5)
-Right now, our assistant can only call **one tool round** at a time.  
-In real-world AI agents, complex tasks need **loops of reasoning and acting** (e.g., Check weather $\rightarrow$ Check flights $\rightarrow$ Send email).  
-This is called the **ReAct pattern** (Reason + Act), which we will explore next!
+### 10. 🚀 The Bridge to Phase 5
+In Phase 4, our assistant learned to call tools, but it was limited to **just one tool round** per question. In Phase 5, we remove that limitation and build the true **Agent Loop**!
+
+---
+
+## 🤖 [Phase 5] - Chained Tool Calling: Building The Autonomous Agent Loop (Video 9)
+
+> **Milestone Focus:** Video 9 (CodeWithMik AI Engineering Series)  
+> **Topic:** Chained (Sequential) Tool Calling, The Agent Loop & Production Safety  
+> **Status:** `COMPLETED`  
+> **Hardware Profile:** Intel Core i3 (CPU inference, 100% Free / Local)  
+> **Active Model:** `qwen2.5:1.5b` (via local Ollama server on `:11434`)  
+> **Key Milestone:** **The official birth of our AI Agent!** We moved from a static chatbot to an autonomous agent.
+
+---
+
+### 1. 🌟 The Big Shift: AI Assistant vs. AI Agent
+
+What is the real difference between an AI Assistant and an AI Agent?
+
+| Feature | 💬 AI Assistant (Videos 1–8) | 🤖 AI Agent (Video 9) |
+| :--- | :--- | :--- |
+| **How it works** | Single question $\rightarrow$ Single answer. | Autonomous loop: Thinks $\rightarrow$ Acts $\rightarrow$ Observes $\rightarrow$ Repeats until goal is met! |
+| **Tool Execution** | Only 1 tool round per user question. | Chains multiple tools one after another if needed. |
+| **Independence** | Relies on user to supply all parameters. | Figures out missing information by calling helper tools on its own. |
+| **Loop Architecture** | Static single `if msg.tool_calls` check. | **The Agent Loop:** A bounded `for step in range(MAX_STEPS)` loop. |
+
+> [!NOTE]
+> **What is an AI Agent?**  
+> *"An AI Agent is an intelligent software system that perceives its environment, makes decisions, and takes autonomous actions in a loop to achieve specific goals."*
+
+---
+
+### 2. 🔍 Parallel vs. Chained (Sequential) Tool Calling
+
+Not all multi-tool questions are the same. Let's compare the two kinds of tool calls:
+
+#### Case 1: Parallel Tool Calls (Independent)
+> **User Question:** *"What is the weather in Bangalore AND what is the current time?"*
+
+```text
+               User Query + Tools
+[Assistant] ────────────────────────► [Ollama LLM]
+    │                                      │
+    │  ◄───────────────────────────────────┘
+    │   AI says: "Call get_city_weather('Bangalore') AND get_current_time()"
+    ▼
+Both tools are completely INDEPENDENT.
+Python runs both tools in 1 step, sends both results back, and AI gives the final answer.
+```
+
+#### Case 2: Chained / Sequential Tool Calls (Dependent)
+> **User Question:** *"What is the weather of the city where I live?"*
+
+```text
+               User Query + Tools
+[Assistant] ────────────────────────► [Ollama LLM]
+    │                                      │
+    │  ◄───────────────────────────────────┘
+    │   AI says: "First, call get_user_city()." (Step 1)
+    ▼
+Python runs: get_user_city() ──► Returns "Bangalore"
+    │
+    │          Sends "Bangalore"
+    └───────────────────────────────► [Ollama LLM]
+                                           │
+       ◄───────────────────────────────────┘
+        AI says: "Now call get_city_weather('Bangalore')!" (Step 2)
+    ▼
+Python runs: get_city_weather("Bangalore") ──► Returns "22°C"
+    │
+    │          Sends "22°C"
+    └───────────────────────────────► [Ollama LLM]
+                                           │
+       ◄───────────────────────────────────┘
+        AI says: "You live in Bangalore, and it is 22°C outside!" (Step 3: Final Answer)
+```
+
+> [!IMPORTANT]
+> **Why is this called "Chained"?**  
+> Because Tool #2 (`get_city_weather`) **depends on the output of Tool #1** (`get_user_city`). They cannot run at the same time. They form a sequential **chain of actions**!
+
+---
+
+### 3. ⚠️ The Fatal Flaw in Our Phase 4 Code
+
+In Video 8, our code had this structure:
+```python
+# Old Phase 4 Code (Broken for chained tools!)
+response = client.chat.completions.create(...)
+if msg.tool_calls:
+    for tool_call in msg.tool_calls:
+        # Run tool
+    second_response = client.chat.completions.create(...)
+    print(second_response.choices[0].message.content) # Assumed this is ALWAYS text!
+```
+
+**What broke?**  
+When the user asked *"What is the weather where I live?"*:
+1. Call #1 asked for `get_user_city`.
+2. Python ran it and sent `"Bangalore"` in Call #2.
+3. In Call #2, the model requested `get_city_weather("Bangalore")`.
+4. But our old code **never checked for tools a second time!** It blindly printed `message.content` (which was empty), completely dropping the weather tool call!
+
+---
+
+### 4. 🔄 The Solution: The Autonomous Agent Loop
+
+To fix this, we replace the single `if` check with an **autonomous loop**.
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                         THE AGENT LOOP CYCLE                           │
+└────────────────────────────────────────────────────────────────────────┘
+
+                   ┌─────────────────────────────┐
+                   │   Start Round (step < MAX)  │
+                   └──────────────┬──────────────┘
+                                  │
+                                  ▼
+                   ┌─────────────────────────────┐
+                   │    Call LLM with History    │
+                   └──────────────┬──────────────┘
+                                  │
+                                  ▼
+                     Did LLM request tool_calls?
+                                ╱   ╲
+                       NO      ╱     ╲      YES
+                              ╱       ╲
+                             ▼         ▼
+             ┌─────────────────┐     ┌───────────────────────────────────┐
+             │ Final Answer!   │     │ 1. Append assistant request msg   │
+             │ Print to user   │     │ 2. Run requested tool(s)          │
+             │ BREAK loop      │     │ 3. Append role="tool" result      │
+             └─────────────────┘     └─────────────────┬─────────────────┘
+                                                       │
+                                                       ▼
+                                            Loop back to next round!
+```
+
+---
+
+### 5. 🛡️ Two Serious Dangers & Production Safety Fixes
+
+An autonomous agent loop is powerful, but dangerous if left unprotected. We introduced **two crucial safety guardrails**:
+
+#### Danger 1: The Infinite Loop Trap
+- **The Risk:** An LLM is non-deterministic. If it gets confused or hallucinating, it might keep calling tools back and forth forever (`while True:` never stops). This wastes tokens, freezes your computer, or runs up massive API bills.
+- **The Fix (`MAX_STEPS`):** Replace `while True` with a hard step limit:
+  ```python
+  MAX_STEPS = 5
+  for step in range(MAX_STEPS):
+      # Agent loop body
+  ```
+
+#### Danger 2: Crashing Tool Functions
+- **The Risk:** What if wttr.in is down? What if the network times out? What if a tool raises an unhandled `Exception`? The whole Python program crashes!
+- **The Fix (`try ... except`):** Wrap every tool call in error handling. If a function fails, don't crash! Instead, convert the error into a polite message and pass it back to the LLM:
+  ```python
+  try:
+      fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
+      result = fn(**func_args)
+  except Exception as e:
+      result = f"Error while running {func_name}: {e}"
+  ```
+  The LLM will read the error message and politely tell the user what happened!
+
+#### 🐍 Python Pro-Trick: The `for ... else` Pattern
+In Python, a `for` loop can have an `else` block:
+```python
+for step in range(MAX_STEPS):
+    if not msg.tool_calls:
+        break # Success! Normal exit.
+else:
+    # This ONLY runs if the loop completed ALL steps without hitting 'break'!
+    print("Sorry, I could not complete this task within the step limit.")
+```
+This gives us a clean fallback when the model exhausts all its allowed attempts!
+
+---
+
+### 6. 💻 Complete Code Walkthrough
+
+#### 📁 `tools.py` (New Tool Added: `get_user_city`)
+
+```python
+# 1. New helper tool to look up user location
+def get_user_city():
+    """Returns the city where the user lives."""
+    return "Bangalore"
+
+# 2. Tool schema menu sent to model
+TOOLS = [
+    # get_current_time schema...
+    # get_city_weather schema...
+    {
+        "type": "function",
+        "function": {
+            "name": "get_user_city",
+            "description": "Returns the user's home city (e.g. Bangalore). MUST be called when user asks about 'where I live', 'my city', or their location.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    }
+]
+
+# 3. Dispatch mapping
+FUNCTION_NAME_TO_FUNCTION_MAP = {
+    "get_current_time": get_current_time,
+    "get_city_weather": get_city_weather,
+    "get_user_city": get_user_city
+}
+```
+
+#### 📁 `simple_ai_assistant.py` (The Safe Agent Loop)
+
+```python
+MAX_STEPS = 5  # Safety boundary: Maximum allowed model rounds
+
+while True:
+    user_input = input("\nUser: ").strip()
+    if user_input.lower() in ["exit", "quit", "bye"]:
+        break
+    if not user_input:
+        continue
+
+    messages.append({"role": "user", "content": user_input})
+
+    # The Autonomous Agent Loop
+    for step in range(MAX_STEPS):
+        response = client.chat.completions.create(
+            model=model_name,
+            messages=messages,
+            tools=TOOLS
+        )
+
+        msg = response.choices[0].message
+
+        # Case 1: Model finished thinking and gave a text answer
+        if not msg.tool_calls:
+            reply = msg.content or ""
+            print("Assistant: " + reply)
+            messages.append({"role": "assistant", "content": reply})
+            break # Exit loop successfully!
+
+        # Case 2: Model wants to call one or more tools
+        messages.append(msg)
+
+        for tool_call in msg.tool_calls:
+            func_name = tool_call.function.name
+            try:
+                func_args = json.loads(tool_call.function.arguments or "{}")
+                fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
+                result = fn(**func_args)
+            except Exception as e:
+                # Capture error without crashing
+                result = f"Error while running {func_name}: {e}"
+
+            # Append tool result to history so model can see it on next step
+            messages.append({
+                "role": "tool",
+                "tool_call_id": tool_call.id,
+                "content": str(result)
+            })
+
+    else:
+        # Runs ONLY if MAX_STEPS was reached without a break
+        fallback_msg = "Sorry, I could not complete your request within the maximum allowed step limit."
+        print("Assistant: " + fallback_msg)
+        messages.append({"role": "assistant", "content": fallback_msg})
+```
+
+---
+
+### 7. 🏆 The Three Most Important Takeaways
+
+1. **Chained Tools are Sequential:** When Tool B needs the result of Tool A, they cannot be called at the same time. The agent must run them one after another in sequential rounds.
+2. **The Agent Loop Enables Autonomy:** By placing the LLM call and tool execution inside a loop, the model can iteratively reason, act, observe the result, and take further action without human intervention.
+3. **Always Bound Your Agent:** Never write an unbounded agent loop. Always enforce a `MAX_STEPS` safety ceiling and wrap tool execution in `try ... except` blocks.
+
+---
+
+### 8. 🚧 Real-World Limitations of the Agent Loop (Interview Must-Know!)
+
+In an interview, you must be able to explain the trade-offs and limits of this design:
+
+1. ⏱️ **Latency & Token Cost:** Each step requires a full network round-trip to the model and adds messages to the conversation history, increasing CPU time and token usage.
+2. ⛓️ **Cascading Errors:** If Tool #1 returns bad data, Tool #2 receives garbage input. The error compounds across steps.
+3. 🧠 **Small Models Struggle with Multi-Step Planning:** Smaller models (like 1.5B–3B parameters) can get confused, miss dependencies, or call tools in the wrong order compared to larger frontier models.
+4. 🎲 **Non-Deterministic Behavior:** Because LLMs are probabilistic token predictors, they might choose different tools or different orders on different runs, making bugs harder to reproduce.
+5. 🛡️ **Prompt Injection Security Risks:** If a tool fetches content from an untrusted external source (like a web page or user email) that contains hidden malicious instructions, the LLM might be tricked into executing unauthorized tools!
+
+---
+
+### 9. 🎓 Quick Interview Flashcards
+
+**Q1: What is the difference between Parallel Tool Calling and Chained Tool Calling?**  
+> **Answer:**
+> - **Parallel Tool Calling:** The tools are independent of each other (e.g. check time + check weather in Paris). The model requests both in a single turn.
+> - **Chained Tool Calling:** Tool B depends on the output of Tool A (e.g. find user's city first, then look up weather for that city). They run in sequential steps.
+
+**Q2: Why is the chained tool loop called the "Agent Loop"?**  
+> **Answer:** Because the system autonomously loops through the cycle of **Perceive $\rightarrow$ Decide $\rightarrow$ Act $\rightarrow$ Observe** until it reaches the goal, without asking the human to do the intermediate steps.
+
+**Q3: Why should you never use `while True` for tool calling in production?**  
+> **Answer:** Because an LLM could get stuck in an infinite loop requesting tools repeatedly. A hard limit like `MAX_STEPS` prevents runaway costs, CPU hanging, and denial of service.
+
+**Q4: How does Python's `for ... else` construct help in agent architectures?**  
+> **Answer:** The `else` block only runs if the loop exhausts all iterations without hitting a `break`. This provides a clean way to detect when the agent failed to finish within `MAX_STEPS` and deliver a graceful fallback response.
+
+---
+
+### 10. 🧪 Live Verification & Test Results
+
+Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
+
+| Test Query | Steps Taken | Tools Executed | Final Outcome |
+| :--- | :--- | :--- | :--- |
+| `"Tell me the weather of the city where I live."` | 2 Rounds | 1. `get_user_city()` $\rightarrow$ Bangalore<br>2. `get_city_weather("Bangalore")` $\rightarrow$ 22°C | ✅ *"You live in Bangalore. The weather in your city is currently sunny with a temperature of +22°C."* |
+| `"What time is it now?"` | 1 Round | `get_current_time()` | ✅ Returned live local time cleanly. |
+| `"What is the weather in Delhi?"` | 1 Round | `get_city_weather("Delhi")` | ✅ Queried wttr.in and reported 20°C. |
+| `"exit"` | 0 Rounds | *None* | ✅ Clean shutdown with *"Assistant: Goodbye!"* |
+
 
 
 
