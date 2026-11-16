@@ -1,20 +1,25 @@
+# 1. Standard Library Imports
 import os
-import json
+
+# 2. Third-Party Library Imports
 from openai import OpenAI
 from dotenv import load_dotenv
-from tools import TOOLS, FUNCTION_NAME_TO_FUNCTION_MAP
 
-# 1. Load environment variables
+# 3. Local Application Imports
+from tools import TOOLS, run_tool
+from utilities.utilities import log
+
+# Load environment configuration
 load_dotenv()
 
-# 2. Initialize client
+# Initialize OpenAI-compatible local client
 client = OpenAI(
     base_url=os.getenv("BASE_URL"),
     api_key=os.getenv("API_KEY")
 )
 
 model_name = os.getenv("MODEL")
-print(f"--- Agent Initialized with Chained Tools ({model_name}) ---")
+print(f"--- 🤖 Agent Initialized with Chained Tools ({model_name}) ---")
 print("Type 'exit', 'quit', or 'bye' to end the session.\n")
 
 # Safety boundary: Maximum allowed model rounds per user query
@@ -33,13 +38,13 @@ messages = [
 
 while True:
     try:
-        user_input = input("\nUser: ").strip()
+        user_input = input("\n👤 User: ").strip()
     except (KeyboardInterrupt, EOFError):
-        print("\nSession ended.")
+        print("\n\nSession ended.")
         break
 
     if user_input.lower() in ["exit", "quit", "bye", "goodbye"]:
-        print("Assistant: Goodbye!")
+        print("🤖 Assistant: Shutting down. Goodbye!")
         break
 
     if not user_input:
@@ -57,35 +62,30 @@ while True:
 
         msg = response.choices[0].message
 
-        # If no tool calls were requested, the model gave its final answer!
+        # If no tool calls were requested, the model gave its final text answer!
         if not msg.tool_calls:
-            reply = msg.content or ""
-            print("Assistant: " + reply)
+            # Safe fallback with (msg.content or "") to prevent TypeError when content is None
+            reply = (msg.content or "").strip()
+            print("🤖 Assistant: " + reply)
             messages.append({"role": "assistant", "content": reply})
             break
 
         # Model requested tool call(s)
+        log(f"Step {step + 1}: model requested {len(msg.tool_calls)} tool call(s)")
         messages.append(msg)
 
         for tool_call in msg.tool_calls:
-            func_name = tool_call.function.name
-            try:
-                func_args = json.loads(tool_call.function.arguments or "{}")
-                fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
-                result = fn(**func_args)
-            except Exception as e:
-                # Catch any runtime/tool error and pass it back to the model politely
-                result = f"Error while running {func_name}: {e}"
+            # Execute tool through modular runner
+            result = run_tool(tool_call)
 
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
-                "content": str(result)
+                "content": result
             })
 
     else:
         # Python for-else: Only executes if loop finishes ALL steps without a 'break'
         fallback_msg = "Sorry, I could not complete your request within the maximum allowed step limit."
-        print("Assistant: " + fallback_msg)
+        print("🤖 Assistant: " + fallback_msg)
         messages.append({"role": "assistant", "content": fallback_msg})
-

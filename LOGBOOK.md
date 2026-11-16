@@ -922,6 +922,205 @@ Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
 | `"What is the weather in Delhi?"` | 1 Round | `get_city_weather("Delhi")` | ✅ Queried wttr.in and reported 20°C. |
 | `"exit"` | 0 Rounds | *None* | ✅ Clean shutdown with *"Assistant: Goodbye!"* |
 
+---
+
+## 🧹 [Phase 6] - Refactoring, Clean Code & Debug Logging (Video 10)
+
+> **Milestone Focus:** Video 10 (CodeWithMik AI Engineering Series)  
+> **Topic:** Code Refactoring, Centralized Debug Logging, ANSI Terminal Colors & Bug Fixes  
+> **Status:** `COMPLETED`  
+> **Hardware Profile:** Intel Core i3 (CPU inference, 100% Free / Local)  
+> **Active Model:** `qwen2.5:1.5b` (via local Ollama server on `:11434`)  
+> **Key Goal:** Make our codebase modular, clean, and production-ready with professional observability.
+
+---
+
+### 1. 🎯 Why Refactor Now? (The "Why")
+
+As our AI Assistant grew into an autonomous AI Agent, our code was becoming crowded:
+- Tool execution logic was tangled inside the conversation loop.
+- When something failed, we had no visibility into what the AI was thinking or which tools it attempted to run.
+- Minor hidden bugs (like missing required schema tags or `None` string concatenation) could silently crash the program.
+
+```text
+Before Video 10 (Messy & Blind):
+┌──────────────────────────────────────────────────────────┐
+│ simple_ai_assistant.py                                   │
+│  - Chat loop mixed with tool argument parsing            │
+│  - No visibility into model tool choices                 │
+│  - Program crashes silently if external API fails        │
+└──────────────────────────────────────────────────────────┘
+
+After Video 10 (Clean, Modular & Observable):
+┌─────────────────────────┐   ┌──────────────────────────┐   ┌─────────────────────────┐
+│ utilities/utilities.py  │   │ tools.py                 │   │ simple_ai_assistant.py  │
+│  - Centralized log()    │◄──┼─ run_tool() modularity   │◄──┼─ Clean Agent Loop       │
+│  - Muted ANSI colors    │   │  - Handles exceptions    │   │  - Elegant error bounds │
+│  - DEBUG env toggle     │   │  - API error safety      │   │  - User/Bot UI emojis   │
+└─────────────────────────┘   └──────────────────────────┘   └─────────────────────────┘
+```
+
+---
+
+### 2. 🐛 Three Sneaky Bugs We Fixed
+
+CodeWithMik pointed out three subtle bugs that often go unnoticed during early development:
+
+| # | The Bug | ❌ What Went Wrong | ✅ How We Fixed It |
+| :--- | :--- | :--- | :--- |
+| **1** | **Missing Required Parameters in Schema** | The AI might call `get_city_weather()` with an empty string or omit `city`, causing a missing argument crash. | Added `"required": ["city"]` to the JSON schema. Also added input validation inside Python. |
+| **2** | **Silent API Failures** | If `wttr.in` returned a 404 or 500 server error, Python silently continued and tried to parse broken HTML text. | Added `response.raise_for_status()`. It raises an `HTTPError` immediately, which gets caught gracefully by `try/except`. |
+| **3** | **`None` Concatenation `TypeError`** | When the AI issues a tool call, `msg.content` is often `None`. Running `"Assistant: " + msg.content` crashes Python with `TypeError: can only concatenate str (not "NoneType")`. | Used `(msg.content or "").strip()` to safely substitute an empty string if content is `None`. |
+
+> [!NOTE]
+> **Important Rule: Model Schemas are HINTS, Not Guarantees!**  
+> Telling the model that a parameter is `"required"` guides the model, but smaller LLMs (like 1.5B) can still make mistakes or pass bad arguments. Always validate inside your Python code!
+
+---
+
+### 3. 🎨 Visual Observability: Centralized Debug Logging
+
+When an autonomous agent runs multiple rounds of tool calls, you need to see what is happening under the hood without cluttering the user interface.
+
+#### The Logging Rules:
+1. **Muted Color (ANSI Escape Codes):** Logs print in dark gray (`\033[90m`) so they don't distract from the user's conversation.
+2. **Indented Layout:** Logs start with two spaces (`  Step 1:...`) so they are visually separate from chat prompts.
+3. **Controlled by `.env`:** A single toggle `DEBUG=True` or `DEBUG=False` turns logs on or off across the entire application.
+4. **Single Source of Truth:** A single function `log(text)` inside `utilities/utilities.py`.
+
+```text
+Visual Appearance in Terminal:
+──────────────────────────────────────────────────────────────────
+👤 User: What is the weather in Pune?
+  Step 1: model requested 1 tool call(s)           ◄── Muted Gray Log
+  🔧 get_city_weather({'city': 'Pune'})            ◄── Muted Gray Log
+     ↳ Pune: ✨ +19°C                              ◄── Muted Gray Log
+🤖 Assistant: The weather in Pune is currently +19°C.
+──────────────────────────────────────────────────────────────────
+```
+
+---
+
+### 4. 🌈 How ANSI Escape Codes Work (The Simple Explanation)
+
+Terminals don't just print text; they also respond to special **control codes**:
+
+```text
+\033   ──► The ESCAPE signal (ASCII 27). Tells terminal: "A command is coming!"
+[90m   ──► The command: Set foreground text to dark gray.
+<Text> ──► Your debug log string ("Step 1: model requested...")
+\033   ──► Another ESCAPE signal.
+[0m    ──► Reset styling back to normal white terminal text.
+```
+
+> [!WARNING]
+> **Don't Forget to Reset!**  
+> If you omit `\033[0m` at the end, every single piece of text printed afterward will stay stuck in gray! Always close your ANSI codes.
+
+---
+
+### 5. 🧩 Code Modularization: The `run_tool()` Function
+
+Instead of cluttering the chat loop with `json.loads`, dictionary lookups, `try...except`, and logs, we moved all tool execution into `tools.py`:
+
+```python
+def run_tool(tool_call):
+    """Executes a single tool call from the model, logs execution, and safely handles errors."""
+    func_name = tool_call.function.name
+    func_args = {}
+    try:
+        func_args = json.loads(tool_call.function.arguments or "{}")
+        log(f"🔧 {func_name}({func_args})")
+        fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
+        result = fn(**func_args)
+    except Exception as e:
+        result = f"Error while running {func_name}: {e}"
+
+    log(f"   ↳ {result}")
+    return str(result)
+```
+
+Now, the main loop in `simple_ai_assistant.py` is only **3 lines long**:
+```python
+for tool_call in msg.tool_calls:
+    result = run_tool(tool_call)
+    messages.append({
+        "role": "tool",
+        "tool_call_id": tool_call.id,
+        "content": result
+    })
+```
+
+---
+
+### 6. 📁 Clean Python Import Standards (PEP 8)
+
+In professional software development, imports should always follow this 3-tier grouping separated by blank lines:
+
+```python
+# 1. Standard Library Imports (Built-in Python modules)
+import os
+import json
+from datetime import datetime
+
+# 2. Third-Party Library Imports (Installed via pip)
+from openai import OpenAI
+from dotenv import load_dotenv
+import requests
+
+# 3. Local Application Imports (Our custom modules)
+from tools import TOOLS, run_tool
+from utilities.utilities import log
+```
+
+---
+
+### 7. 🏆 The Three Most Important Takeaways
+
+1. **Never Rely Solely on the LLM for Validation:** Always write defensive Python code. Use `raise_for_status()`, handle empty arguments, and use `(content or "")` fallbacks.
+2. **Observability is Vital for Autonomous Loops:** Without debug logging, an agent loop is a black box. Colored, structured logs allow you to inspect tool choices, parameters, and outputs in real time.
+3. **Keep Functions Focused (Single Responsibility):** The chat loop only handles conversation flow; `run_tool()` only handles execution; `log()` only handles debug output.
+
+---
+
+### 8. ⚠️ Real-World Bugs & Gotchas Encountered
+
+1. **Environment File Concatenation:**  
+   *Problem:* When appending `DEBUG=True` to `.env` without a trailing newline, it merged with the previous line into `MODEL="qwen2.5:1.5b"DEBUG=True`.  
+   *Result:* `python-dotenv` failed to parse line 3, causing `MODEL` to be `None` and throwing a 400 Bad Request.  
+   *Lesson:* Always ensure configuration files have clean line endings.
+
+2. **Small Model Parameter Hallucination:**  
+   *Problem:* When chaining, `qwen2.5:1.5b` occasionally passed the tool name itself as an argument (`{'city': 'get_user_city'}`).  
+   *Result:* `wttr.in` returned a 500 Server Error.  
+   *Lesson:* Thanks to `raise_for_status()` and `try...except`, the program did not crash! The error was fed back to the model, and it apologized gracefully to the user.
+
+---
+
+### 9. 🎓 Quick Interview Flashcards
+
+**Q1: Why do we place `run_tool()` inside `tools.py` instead of the main script?**  
+> **Answer:** To follow the **Single Responsibility Principle (SRP)**. The main script manages the conversation flow and agent loop, while `tools.py` manages tool definitions, argument resolution, error handling, and execution.
+
+**Q2: What is the purpose of `response.raise_for_status()` in HTTP client code?**  
+> **Answer:** It checks the HTTP response status code. If the server returned an error (4xx client error or 5xx server error), it immediately raises an `HTTPError` exception so our error handling logic can catch it rather than processing corrupted data.
+
+**Q3: How does the `DEBUG` environment variable improve code maintainability?**  
+> **Answer:** It allows developers to toggle rich diagnostic output on or off across the entire system without editing source code or adding/removing manual `print()` statements.
+
+---
+
+### 10. 🧪 Live Verification & Test Results
+
+Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
+
+| Test Prompt | Debug Logs Observed | Assistant Output | Status |
+| :--- | :--- | :--- | :--- |
+| `"What is the weather in Pune?"` | `Step 1: model requested 1 tool call(s)`<br>`🔧 get_city_weather({'city': 'Pune'})`<br>`   ↳ Pune: ✨ +19°C` | *"The weather in Pune is currently showing a pleasant +19°C."* | ✅ **PASS** |
+| Tool Error Simulation (`wttr.in` 500 error) | `Step 1: model requested 1 tool call(s)`<br>`🔧 get_city_weather(...)`<br>`   ↳ Error while running get_city_weather: 500 Server Error` | *"I'm sorry, but there was an error while trying to fetch the weather for your location. Could you please try again?"* | ✅ **PASS** |
+| `"exit"` | *None* | *"🤖 Assistant: Shutting down. Goodbye!"* | ✅ **PASS** |
+
+
 
 
 

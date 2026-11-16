@@ -1,5 +1,7 @@
+import json
 from datetime import datetime
 import requests
+from utilities.utilities import log
 
 # ---------------------------------------------------------
 # 1. Actual Python Functions (Executed locally by our code)
@@ -9,16 +11,21 @@ def get_current_time():
     """Returns the current local date and time."""
     return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
+
 def get_city_weather(city: str):
     """Fetches current weather for a given city using wttr.in."""
-    url = f"https://wttr.in/{city}?format=3"
+    if not city or not city.strip():
+        raise ValueError("City name is required.")
+    url = f"https://wttr.in/{city.strip()}?format=3"
     response = requests.get(url, timeout=10)
-    response.raise_for_status()
+    response.raise_for_status()  # Raises HTTPError for 4xx/5xx responses
     return response.text.strip()
+
 
 def get_user_city():
     """Returns the city where the user lives."""
     return "Bangalore"
+
 
 # ---------------------------------------------------------
 # 2. JSON Schema Definitions (The "Menu" sent to the LLM)
@@ -50,7 +57,7 @@ TOOLS = [
                         "description": "The name of the city to get the weather for (e.g., Delhi, Seattle)."
                     }
                 },
-                "required": ["city"]
+                "required": ["city"]  # Explicitly tell the LLM that 'city' is mandatory!
             }
         }
     },
@@ -77,3 +84,23 @@ FUNCTION_NAME_TO_FUNCTION_MAP = {
     "get_city_weather": get_city_weather,
     "get_user_city": get_user_city
 }
+
+
+# ---------------------------------------------------------
+# 4. Modular Tool Runner (Executes, handles errors & logs)
+# ---------------------------------------------------------
+
+def run_tool(tool_call):
+    """Executes a single tool call from the model, logs execution, and safely handles errors."""
+    func_name = tool_call.function.name
+    func_args = {}
+    try:
+        func_args = json.loads(tool_call.function.arguments or "{}")
+        log(f"🔧 {func_name}({func_args})")
+        fn = FUNCTION_NAME_TO_FUNCTION_MAP[func_name]
+        result = fn(**func_args)
+    except Exception as e:
+        result = f"Error while running {func_name}: {e}"
+
+    log(f"   ↳ {result}")
+    return str(result)
