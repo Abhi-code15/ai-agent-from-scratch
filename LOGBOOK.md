@@ -1120,6 +1120,289 @@ Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
 | Tool Error Simulation (`wttr.in` 500 error) | `Step 1: model requested 1 tool call(s)`<br>`🔧 get_city_weather(...)`<br>`   ↳ Error while running get_city_weather: 500 Server Error` | *"I'm sorry, but there was an error while trying to fetch the weather for your location. Could you please try again?"* | ✅ **PASS** |
 | `"exit"` | *None* | *"🤖 Assistant: Shutting down. Goodbye!"* | ✅ **PASS** |
 
+---
+
+## 🚀 [Phase 7] - LLM Streaming & Streamed Tool Call Reconstruction
+
+<div align="center">
+
+[![Lecture](https://img.shields.io/badge/Lecture-Video_11-E53935?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com)
+[![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](https://github.com)
+[![Topic](https://img.shields.io/badge/Topic-Streaming_%26_Tool_Reconstruction-1E88E5?style=for-the-badge)](https://github.com)
+[![Model](https://img.shields.io/badge/Model-Qwen_2.5_1.5B-FF6F00?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.com)
+
+</div>
+
+> **Milestone Focus:** Video 11 — *LLM Streaming and Tool Calls*  
+> **Status:** `COMPLETED`  
+> **Prerequisites:** Phase 6 (Code Refactoring & Colored Debug Logging)  
+> **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  
+
+---
+
+### 1. 🎯 Learning Objectives & Context
+
+- **Primary Goal:** Eliminate the "frozen terminal" wait time by implementing real-time token streaming and reconstructing partial streamed tool calls.
+- **Key Subtopics:**
+  1. **User Perception & TTFT:** Why streaming does not make the LLM faster, but reduces **Time To First Token** from 10s to 1s.
+  2. **Text Streaming (`stream_test.py`):** Handling `stream=True`, filtering `None` chunks, disabling Python output buffering with `flush=True`, and accumulating `full_response`.
+  3. **Streamed Tool Calls (`stream_tools_test.py`):** Handling fragmented, multi-chunk, interleaved tool arguments using `SimpleNamespace` and dictionary key sorting.
+- **Lecture Context:** In Video 10, we made our agent modular. In this video, we build two dedicated foundational test scripts (`stream_test.py` and `stream_tools_test.py`) that master real-time response rendering and tool assembly before integrating them into the full agent loop in Video 12.
+
+---
+
+### 2. 🧠 The Feynman Intuition (Explain Like I'm 12)
+
+> [!NOTE]
+> **The Real-World Analogy: The Pizza Delivery vs. The Conveyor Buffet 🍕**
+>
+> Imagine you order a large 8-slice pizza at a restaurant:
+> 
+> - **Non-Streaming (The Old Way):** The chef bakes all 8 slices, boxes the entire pizza, and leaves you sitting at an empty table starving for 20 minutes before serving. You feel like the kitchen is frozen or broken!
+> - **Streaming (The New Way):** The moment the first slice comes out of the oven piping hot, the waiter immediately places it on your plate. You start eating in 2 minutes. The total time to bake all 8 slices is still 20 minutes, but you are happy because **you never waited with an empty plate**.
+> - **Streamed Tool Calls (Building with LEGO):** When the chef needs your tools (like a pizza cutter or garlic dip), the waiter brings the tool in pieces: first the handle (chunk 1), then the blade (chunk 2), then the screws (chunk 3). Your job is to assemble the pieces on your table into a complete tool before cutting the pizza!
+
+---
+
+### 3. 🗺️ Visual Architecture & Execution Flow
+
+#### A. Non-Streaming vs. Streaming (TTFT Comparison)
+
+```mermaid
+flowchart TD
+    subgraph NonStreaming["❌ Non-Streaming (High TTFT ~10s)"]
+        A1["👤 User Query"] --> B1["⏳ LLM Generates Tokens in Memory (10s Silence)"]
+        B1 --> C1["💬 Complete Text Printed at Once"]
+    end
+
+    subgraph Streaming["✅ Streaming (Low TTFT ~1s)"]
+        A2["👤 User Query"] --> B2["⚡ First Token Generated (1s)"]
+        B2 --> C2["🖨️ print(token, end='', flush=True)"]
+        C2 --> D2["🔄 Next Token Arrives via Stream Pipeline"]
+        D2 --> C2
+    end
+```
+
+#### B. Tool Call Chunk Aggregation Pipeline
+
+```mermaid
+flowchart LR
+    subgraph LLM_Stream["Server Sent Events (SSE)"]
+        C1["Chunk 1: idx=0, id='call_1', name='get_weather', args=''"]
+        C2["Chunk 2: idx=0, id=None, name=None, args='city: Pu'"]
+        C3["Chunk 3: idx=0, id=None, name=None, args='ne'"]
+    end
+
+    subgraph Reconstructor["stream_tools_test.py Aggregator"]
+        Map["calls = dict"]
+        SN["SimpleNamespace(id, function.name, function.arguments)"]
+    end
+
+    subgraph Execution["Execution"]
+        Sorted["sorted(calls.keys())"]
+        Run["run_tool(call)"]
+    end
+
+    C1 --> Map
+    C2 --> Map
+    C3 --> Map
+    Map --> SN
+    SN --> Sorted
+    Sorted --> Run
+```
+
+---
+
+### 4. 🔍 Step-by-Step Concept Breakdown (In Lecture Order)
+
+#### A. The Blank Screen Problem & User Perception
+When asking a detailed question (e.g. *"Explain Python in 100 words"*), the previous architecture blocked the Python terminal until the final token arrived. To the user, the assistant looks frozen or crashed.
+- Commercial systems (ChatGPT, Claude, Gemini) solve this by using **Streaming** via Server-Sent Events (SSE).
+- Streaming outputs each token the exact millisecond it is computed.
+
+#### B. Understanding TTFT (Time To First Token)
+In AI Systems Engineering, performance is measured by two primary latency metrics:
+
+| Metric | Definition | Impact on User Experience |
+| :--- | :--- | :--- |
+| **TTFT (Time To First Token)** | Time elapsed between sending the prompt and receiving token #1 | **Critical:** Dictates perceived responsiveness and user satisfaction |
+| **TPS (Tokens Per Second)** | The rate at which subsequent tokens are generated | Dictates total reading speed and throughput |
+
+> [!IMPORTANT]
+> **Crucial Rule:** Streaming **does not** speed up token generation. The total wall-clock time remains the same. What streaming eliminates is **idle waiting time** (TTFT).
+
+#### C. The Client Streaming Parameter & Delta Chunks
+By setting `stream=True` in `client.chat.completions.create()`, the return object changes from a static response object into an **iterable stream pipeline**:
+- Non-Streaming: `response.choices[0].message.content`
+- Streaming: `chunk.choices[0].delta.content`
+
+#### D. The Python Print Buffering Trap (`end=""` vs `flush=True`)
+When streaming words across the screen:
+1. `print(piece)` adds an automatic newline (`\n`), causing every word to print on a separate line.
+2. `print(piece, end="")` removes the newline, **BUT** standard operating systems buffer stdout for performance. The text remains stuck in the operating system buffer and dumps all at once when the program finishes!
+3. `print(piece, end="", flush=True)` forcefully empties the buffer to the terminal screen on every single token, producing the smooth typing effect.
+
+#### E. Handling `None` Chunks & Thinking Models
+Some LLM chunks (especially reasoning models like `qwen2.5` or `deepseek-r1`) emit empty content chunks during initial processing or tool dispatch. If we do `print(None)`, the terminal prints the literal word `"None"`. We must always check:
+```python
+piece = chunk.choices[0].delta.content
+if piece:
+    print(piece, end="", flush=True)
+    full_response += piece
+```
+
+#### F. The Challenge of Streamed Tool Calls
+When an LLM calls tools during streaming:
+1. Tool information arrives in partial slices across multiple chunks.
+2. The `id` and `function.name` usually arrive in the first chunk, while `arguments` is streamed in fragments (e.g., `{"ci`, `ty":`, `"Pu`, `ne"}`).
+3. If multiple tools are called (e.g., weather for Pune AND Delhi), chunks may arrive **interleaved**!
+4. We reconstruct them using `SimpleNamespace` mapped by `tc.index`:
+```python
+obj = calls.setdefault(
+    index,
+    SimpleNamespace(id="", function=SimpleNamespace(name="", arguments=""))
+)
+```
+
+---
+
+### 5. 💻 Code Walkthrough & Line-by-Line Anatomy
+
+#### A. Isolated Text Streaming (`stream_test.py`)
+
+[stream_test.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/stream_test.py)
+
+```python
+stream = client.chat.completions.create(
+    model=MODEL,
+    messages=[
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": prompt}
+    ],
+    stream=True  # Enables chunked server-sent streaming
+)
+
+full_response = ""
+
+for chunk in stream:
+    if not chunk.choices:
+        continue
+
+    piece = chunk.choices[0].delta.content
+
+    if piece:
+        print(piece, end="", flush=True)  # Real-time display without newline
+        full_response += piece            # Accumulate full text for history
+```
+
+#### B. Streamed Tool Call Reconstruction (`stream_tools_test.py`)
+
+[stream_tools_test.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/stream_tools_test.py)
+
+```python
+calls = {}  # { index: SimpleNamespace(...) }
+
+for chunk in stream:
+    if not chunk.choices:
+        continue
+
+    delta = chunk.choices[0].delta
+
+    if delta.tool_calls:
+        for tc in delta.tool_calls:
+            index = tc.index
+
+            # 1. Fetch or initialize the object
+            obj = calls.setdefault(
+                index,
+                SimpleNamespace(
+                    id="",
+                    function=SimpleNamespace(name="", arguments="")
+                )
+            )
+
+            # 2. Accumulate partial slices
+            if tc.id:
+                obj.id = tc.id
+            if tc.function and tc.function.name:
+                obj.function.name += tc.function.name
+            if tc.function and tc.function.arguments:
+                obj.function.arguments += tc.function.arguments
+
+# 3. Sort by index to maintain original execution order
+calls_list = [calls[k] for k in sorted(calls.keys())]
+
+# 4. Pass reconstructed objects directly to run_tool()
+for call in calls_list:
+    result = run_tool(call)
+```
+
+---
+
+### 6. 🧩 Before vs. After Code Evolution
+
+| Capability | Before (Phase 6) | After (Phase 7) | Architectural Benefit |
+| :--- | :--- | :--- | :--- |
+| **API Parameter** | `stream=False` (default) | `stream=True` | Establishes an open generator pipeline for real-time delivery. |
+| **Response Access** | `response.choices[0].message` | `chunk.choices[0].delta` | Accesses fine-grained token deltas rather than monolithic blocks. |
+| **Terminal Output** | Monolithic `print()` after 10s wait | `print(..., end="", flush=True)` | Slashes perceived latency; displays immediate output. |
+| **History Retention** | `messages.append(message)` | `full_response += piece` | Accumulates token stream so conversation history is never lost. |
+| **Tool Calling** | Assumed complete object in one response | Multi-chunk assembly via `SimpleNamespace` | Safely handles fragmented and interleaved tool calls across any LLM backend. |
+
+---
+
+### 7. 🏆 The 3 Golden Takeaways
+
+1. **TTFT Shapes User Trust:** Total generation time matters far less to humans than the time it takes to see the first word. Streaming turns a "frozen" interface into an engaging experience.
+2. **Always Flush Terminal Output with `end=""`:** Without `flush=True`, Python's stdout buffer will delay printing until the entire stream is closed, completely defeating the purpose of streaming!
+3. **Reconstruct Tool Calls by Index Before Execution:** Never assume tool calls arrive in one piece. Accumulate chunks in a dictionary keyed by `index`, sort the keys, and parse the completed JSON arguments only after the stream closes.
+
+---
+
+### 8. ⚠️ Common Traps & Real-World Gotchas
+
+1. **The Ghost `None` Bug:**  
+   - *Problem:* Terminal outputs `NoneAn API is a set of...` or throws `TypeError` when concatenating `full_response += piece`.  
+   - *Cause:* The first chunk often carries role information or reasoning signals where `content` is `None`.  
+   - *Fix:* Always guard with `if piece:`.
+
+2. **The Buffer Deadlock:**  
+   - *Problem:* Code has `stream=True` and `end=""`, but text still appears in a big burst at the end.  
+   - *Cause:* Python's internal I/O buffer holds characters until a newline (`\n`) is encountered.  
+   - *Fix:* Explicitly set `flush=True` on every print statement.
+
+3. **Incomplete JSON Crash:**  
+   - *Problem:* Calling `json.loads(tc.function.arguments)` inside the stream loop crashes with `JSONDecodeError: Unterminated string`.  
+   - *Cause:* The argument JSON is incomplete mid-stream (e.g. `{"city": "De`).  
+   - *Fix:* Never parse arguments inside the chunk loop. Concatenate the full string first, and parse only after the stream ends.
+
+---
+
+### 9. 🎓 Technical Interview Flashcards
+
+**Q1: What is the difference between `message` and `delta` in the OpenAI API response?**  
+> **Answer:** In non-streaming mode, the API returns a complete `message` object containing the full generated content. In streaming mode (`stream=True`), each chunk returns a `delta` object representing only the newly generated slice of text or tool parameters since the previous chunk.
+
+**Q2: What is TTFT and why is it important in AI systems design?**  
+> **Answer:** **Time To First Token (TTFT)** measures the latency between dispatching a prompt and rendering the first token of output. It is crucial because users perceive responsiveness based on how quickly the system reacts, even if total task completion time remains unchanged.
+
+**Q3: Why is `types.SimpleNamespace` useful when reconstructing streamed tool calls?**  
+> **Answer:** `SimpleNamespace` creates lightweight Python objects with dot-accessible attributes (e.g. `obj.function.name`). This allows us to reconstruct streamed chunks into the exact object structure expected by OpenAI's SDK and our downstream tool runners (`run_tool`) without defining complex boilerplate classes.
+
+---
+
+### 10. 🧪 Live Verification & Test Matrix
+
+Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
+
+| Test Script | Prompt Tested | Observed Behavior | Status |
+| :--- | :--- | :--- | :---: |
+| [`stream_test.py`](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/stream_test.py) | *"Explain what an API is in simple words in about 50 words."* | Immediate typing effect within 1s; complete 30-word response captured in `full_response`. | ✅ **PASS** |
+| [`stream_tools_test.py`](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/stream_tools_test.py) | *"Tell me the weather of Pune and Delhi."* | Reconstructed 2 tool calls (`call_tje4re9x` for Pune, `call_7ifg5wec` for Delhi) via `SimpleNamespace`; executed via `run_tool()` returning `+22°C` and `+21°C`. | ✅ **PASS** |
+
+---
+
+
 
 
 
