@@ -17,7 +17,7 @@
 
 ## 🌟 1. Purpose & Vision
 
-This repository documents the step-by-step construction of autonomous AI agents from scratch, following the **CodeWithMik AI Engineering playlist**. 
+This repository documents the step-by-step construction of autonomous AI agents from scratch, covering the comprehensive AI Engineering curriculum. 
 
 The goal of `DESIGN.md` is to establish a **strict, permanent standard** for all future notes, documentation entries in `LOGBOOK.md`, and code designs. 
 
@@ -51,6 +51,8 @@ Named after Nobel physicist Richard Feynman, this technique requires explaining 
    If the lecture starts with a manual implementation and refactors it into a helper function later, document the *exact transition* and the reasoning behind it.
 3. **Explicit Boundary Separation:**  
    Clearly distinguish what was directly taught in the lecture from additional engineering enhancements (e.g., production guardrails, defensive error handlers, or local hardware optimizations).
+4. **No External Channel Names or Video Links:**  
+   Do not add YouTube channel names, instructor brandings, or video links in notes or badges. Focus exclusively on technical topic names, architecture, and engineering principles.
 
 ---
 
@@ -142,18 +144,18 @@ Every new milestone added to `LOGBOOK.md` **must strictly follow this exact 11-p
 ````markdown
 ---
 
-## 🚀 [Phase X] - <Milestone Title from Lecture>
+## 🚀 [Phase X] - <Milestone Topic Title>
 
 <div align="center">
 
-[![Lecture](https://img.shields.io/badge/Lecture-Video_XX-E53935?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com)
+[![Module](https://img.shields.io/badge/Module-XX-E53935?style=for-the-badge)](#)
 [![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](https://github.com)
 [![Topic](https://img.shields.io/badge/Topic-<Topic_Name>-1E88E5?style=for-the-badge)](https://github.com)
 [![Model](https://img.shields.io/badge/Model-Qwen_2.5_1.5B-FF6F00?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.com)
 
 </div>
 
-> **Milestone Focus:** Video XX — <Exact Lecture Title>  
+> **Milestone Focus:** Module XX — *<Topic Title>*  
 > **Status:** `COMPLETED`  
 > **Prerequisites:** Phase X-1 (<Previous Milestone Title>)  
 > **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  

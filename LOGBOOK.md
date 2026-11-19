@@ -319,9 +319,9 @@ while True:
 
 ---
 
-## 🛠️ [Phase 4] - Tool Calling: Teaching Our AI to Use Real-World Tools (Videos 7 & 8)
+## 🛠️ [Phase 4] - Tool Calling: Teaching Our AI to Use Real-World Tools (Modules 7 & 8)
 
-> **Milestone Focus:** Videos 7 & 8 (CodeWithMik AI Engineering Series)  
+> **Milestone Focus:** Modules 7 & 8: Function Calling & Tool Parameters  
 > **Topic:** Tool Calling Basics & Functions with Parameters  
 > **Status:** `COMPLETED`  
 > **Hardware Profile:** Intel Core i3 (CPU inference, 100% Free / Local)  
@@ -601,9 +601,9 @@ In Phase 4, our assistant learned to call tools, but it was limited to **just on
 
 ---
 
-## 🤖 [Phase 5] - Chained Tool Calling: Building The Autonomous Agent Loop (Video 9)
+## 🤖 [Phase 5] - Chained Tool Calling: Building The Autonomous Agent Loop (Module 9)
 
-> **Milestone Focus:** Video 9 (CodeWithMik AI Engineering Series)  
+> **Milestone Focus:** Module 9: Chained Tool Calling & The Autonomous Agent Loop  
 > **Topic:** Chained (Sequential) Tool Calling, The Agent Loop & Production Safety  
 > **Status:** `COMPLETED`  
 > **Hardware Profile:** Intel Core i3 (CPU inference, 100% Free / Local)  
@@ -924,9 +924,9 @@ Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
 
 ---
 
-## 🧹 [Phase 6] - Refactoring, Clean Code & Debug Logging (Video 10)
+## 🧹 [Phase 6] - Refactoring, Clean Code & Debug Logging (Module 10)
 
-> **Milestone Focus:** Video 10 (CodeWithMik AI Engineering Series)  
+> **Milestone Focus:** Module 10: Code Refactoring & Debug Logging  
 > **Topic:** Code Refactoring, Centralized Debug Logging, ANSI Terminal Colors & Bug Fixes  
 > **Status:** `COMPLETED`  
 > **Hardware Profile:** Intel Core i3 (CPU inference, 100% Free / Local)  
@@ -964,7 +964,7 @@ After Video 10 (Clean, Modular & Observable):
 
 ### 2. 🐛 Three Sneaky Bugs We Fixed
 
-CodeWithMik pointed out three subtle bugs that often go unnoticed during early development:
+During engineering reviews, three subtle bugs often go unnoticed during early development:
 
 | # | The Bug | ❌ What Went Wrong | ✅ How We Fixed It |
 | :--- | :--- | :--- | :--- |
@@ -1126,14 +1126,14 @@ Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
 
 <div align="center">
 
-[![Lecture](https://img.shields.io/badge/Lecture-Video_11-E53935?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com)
+[![Module](https://img.shields.io/badge/Module-11-E53935?style=for-the-badge)](#)
 [![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](https://github.com)
 [![Topic](https://img.shields.io/badge/Topic-Streaming_%26_Tool_Reconstruction-1E88E5?style=for-the-badge)](https://github.com)
 [![Model](https://img.shields.io/badge/Model-Qwen_2.5_1.5B-FF6F00?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.com)
 
 </div>
 
-> **Milestone Focus:** Video 11 — *LLM Streaming and Tool Calls*  
+> **Milestone Focus:** Module 11 — *LLM Streaming and Tool Calls*  
 > **Status:** `COMPLETED`  
 > **Prerequisites:** Phase 6 (Code Refactoring & Colored Debug Logging)  
 > **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  
@@ -1406,14 +1406,14 @@ Tested on local **Intel Core i3** running `qwen2.5:1.5b` with Ollama:
 
 <div align="center">
 
-[![Lecture](https://img.shields.io/badge/Lecture-Video_12-E53935?style=for-the-badge&logo=youtube&logoColor=white)](https://youtube.com)
+[![Module](https://img.shields.io/badge/Module-12-E53935?style=for-the-badge)](#)
 [![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](https://github.com)
 [![Topic](https://img.shields.io/badge/Topic-Agent_Streaming_%26_Safe_Interrupt-1E88E5?style=for-the-badge)](https://github.com)
 [![Model](https://img.shields.io/badge/Model-Qwen_2.5_1.5B-FF6F00?style=for-the-badge&logo=ollama&logoColor=white)](https://ollama.com)
 
 </div>
 
-> **Milestone Focus:** Video 12 — *Integrating Streaming into AI Agent & Safe Interrupt Handling*  
+> **Milestone Focus:** Module 12 — *Integrating Streaming into AI Agent & Safe Interrupt Handling*  
 > **Status:** `COMPLETED`  
 > **Prerequisites:** Phase 7 (LLM Streaming & Streamed Tool Call Reconstruction)  
 > **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  
