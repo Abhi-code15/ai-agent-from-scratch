@@ -1,0 +1,11 @@
+Tech Documentation - Microservice Architecture
+All backend microservices at Zorvex Technologies are implemented in Python or Go, containerized using Docker, and orchestrated on managed Kubernetes clusters.
+
+Tech Documentation - Code Review Guidelines
+Every pull request requires approval from at least two senior engineers and 100% passing status on automated unit test and security vulnerability scans.
+
+Tech Documentation - Git Branching Strategy
+Developers must branch off the main branch using the standard format: feat/JIRA-ID-description or fix/JIRA-ID-description. Direct commits to main are blocked.
+
+Tech Documentation - Observability and Monitoring
+All service endpoints must publish Prometheus metrics and structured JSON logs to our centralized Grafana and Loki dashboards.

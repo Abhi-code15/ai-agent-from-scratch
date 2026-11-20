@@ -1,0 +1,11 @@
+RCA Documentation - Incident Classification
+Root Cause Analysis (RCA) is mandatory for all P0 and P1 severity incidents affecting Zorvex production services and external customer interfaces.
+
+RCA Documentation - Post-Mortem Timeline
+An initial incident summary must be published within 24 hours of outage mitigation. A comprehensive post-mortem report must be completed within 5 business days.
+
+RCA Documentation - The 5-Whys Methodology
+Engineers must apply the 5-Whys framework to uncover root systemic vulnerabilities rather than pointing fingers at individual developer mistakes.
+
+RCA Documentation - Preventive Action Items
+Every action item identified during the post-mortem must have an assigned engineering owner, a target completion date, and an active Jira issue.

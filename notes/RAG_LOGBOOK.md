@@ -38,11 +38,13 @@
                             ▼
 ┌──────────────────────────────────────────────────────────┐
 │  STAGE 2: RAG & KNOWLEDGE AGENTS (Module 13 Onwards)     │  🚀 ACTIVE TRACK
-│  - Vector Embeddings & High-Dimensional Semantic Spaces  │  📍 Module 13 (Current)
-│  - Cosine Similarity & Vector Mathematics (NumPy)        │  📍 Module 13 (Current)
-│  - Document Parsing & Intelligent Chunking Strategies    │  ⏳ Module 14+
-│  - Local Vector Stores & Similarity Indexing             │  ⏳ Module 14+
-│  - End-to-End RAG Pipelines & Knowledge Tool Integration │  ⏳ Module 14+
+│  - Vector Embeddings & High-Dimensional Semantic Spaces  │  ✅ Module 13
+│  - Cosine Similarity & Vector Mathematics (NumPy)        │  ✅ Module 13
+│  - Knowledge Base Construction & Document-Level Search   │  📍 Module 14 (Current)
+│  - The 4 Failures of Unchunked RAG & Why Chunking Matters│  📍 Module 14 (Current)
+│  - Intelligent Document Chunking Strategies              │  ⏳ Module 15+
+│  - Local Vector Stores, Persistence & Vector Databases   │  ⏳ Module 15+
+│  - End-to-End RAG Pipeline & Autonomous Tool Integration │  ⏳ Module 15+
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -457,3 +459,394 @@ Tested on local **Intel Core i3** using local Ollama server:
 | [`semantic_search_test.py`](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/code_snippets/semantic_search_test.py) | Text 1 (Python) vs. Text 3 (Eating Apples) | Cosine Sim: **`0.35`** (Raw: `0.3538`) | Low similarity score clearly distinguishes unrelated topics. | ✅ **PASS** |
 
 ---
+
+## 🚀 [Phase 10] - Building a Knowledge Base & Exposing the 4 Limitations of Unchunked RAG
+
+<div align="center">
+
+[![Module](https://img.shields.io/badge/Module-14-E53935?style=for-the-badge)](#)
+[![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](#)
+[![Topic](https://img.shields.io/badge/Topic-Knowledge_Base_%26_Naive_Document_Search-1E88E5?style=for-the-badge)](#)
+[![Embeddings](https://img.shields.io/badge/Embeddings-Nomic_768D-7C4DFF?style=for-the-badge)](#)
+[![Concept](https://img.shields.io/badge/Concept-Why_Chunking_Matters-FF6F00?style=for-the-badge)](#)
+
+</div>
+
+> **Milestone Focus:** Module 14 — *Building Knowledge Base for RAG & The Necessity of Chunking*  
+> **Status:** `COMPLETED`  
+> **Prerequisites:** [Phase 9: RAG Fundamentals & Semantic Search](RAG_LOGBOOK.md#phase-9---introduction-to-rag-vector-embeddings--semantic-search)  
+> **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  
+> **Active Models:** `nomic-embed-text` (Vector Embeddings, 768 dimensions)  
+
+---
+
+### 1. 🎯 Learning Objectives & Context
+
+- **The Fundamental Question:** Why don't production RAG systems just embed whole documents as a single vector? What breaks when we do $1 \text{ Document} \rightarrow 1 \text{ Embedding}$?
+- **Knowledge Base Construction:** Build a realistic enterprise knowledge base (`knowledge_base/`) containing multi-topic corporate policies (HR, Hiring, Leave, Medical, RCA, Tech, Travel).
+- **The Naive Document Search Pipeline:** Implement a complete 4-step in-memory search engine:
+  1. `load_documents()`: Safe file system ingestion using standard `utf-8` decoding.
+  2. `add_embeddings()`: Whole-document vectorization using `nomic-embed-text`.
+  3. `search()`: Top-$K$ semantic similarity ranking via Cosine Similarity and custom Lambda sorting.
+  4. `test()`: Real-time query evaluation against private documents.
+- **Exposing the 4 Critical Limitations:** Discover from first principles why naive unchunked RAG collapses at enterprise scale:
+  1. **The "Blurry Vector" Problem:** Compressing an entire multi-page document into a single vector dilutes specific details.
+  2. **In-Memory Ephemeral Storage:** Re-embedding every file on application restart is prohibitively slow ($O(N)$ network/compute overhead).
+  3. **Context Window Flooding:** Feeding complete multi-page files into the LLM prompt causes latency spikes, token limit breaches, and model distraction.
+  4. **The False-Positive Fallacy:** Unchecked Top-$K$ retrieval always returns documents even for completely irrelevant queries.
+
+---
+
+### 2. 🧠 The Feynman Intuition (Explain Like I'm 12)
+
+> [!NOTE]
+> **Metaphor 1: The Blurry Panoramic Photograph 📸**
+> 
+> Imagine you visit the Grand Canyon. You take a single, ultra-wide panoramic photo of the entire 10-mile horizon. In that single photo, you can see mountains, trees, clouds, rocks, and a tiny eagle sitting on a branch.
+> 
+> - **The Whole-Document Approach ($1 \text{ File} = 1 \text{ Vector}$):** You compress that massive 10-mile photo into a tiny $1 \times 1$ inch stamp. What happens to the tiny eagle? **It blurs into an unrecognizable dot!** You can tell the stamp is about "nature", but if someone asks, *"Show me the eagle's beak"*, the image is too blurry to see it.
+> - **The Chunking Approach:** Instead of one massive blurry stamp, you take crisp, close-up snapshot photos of each individual section: one photo of the eagle, one photo of the campsite, one photo of the river. When someone asks for the eagle, you hand them the exact close-up!
+> - **In AI:** An entire 20-page document compressed into 768 float numbers blurs specific facts (like maternity leave days). Breaking it into focused chunks keeps every detail razor-sharp!
+
+---
+
+> [!NOTE]
+> **Metaphor 2: Ordering a Full Library Book for One Sentence 📚**
+> 
+> Suppose you want to know what year George Washington was born.
+> 
+> - **Naive Unchunked Search:** The librarian brings you a heavy 900-page biography of George Washington, dumps it on your desk, and says: *"Read this whole book to find the year."* Your desk is crowded (Context Window overflow), it takes forever to read (High Latency), and you get distracted by stories about his wooden teeth (LLM distraction).
+> - **Chunked Search:** The librarian photocopies **just the 2-sentence paragraph** mentioning his birthdate and hands you a small slip of paper. You get your answer instantly with zero clutter!
+
+---
+
+### 3. 🗺️ Visual Architecture & Execution Flow
+
+#### A. Naive Whole-Document Ingestion vs. Chunked Ingestion
+
+```mermaid
+flowchart TD
+    subgraph Naive["❌ Naive Whole-Document Approach (Module 14)"]
+        D1["📄 leave_policy.txt (904 chars)\n• Casual • Earned • Sick • Maternity • Applying"] --> V1["🧮 1 Single Embedding Vector (768D)"]
+        V1 --> Note1["⚠️ Blurry Representation:\nSpecific maternity terms diluted by casual/sick leave text!"]
+    end
+
+    subgraph Chunked["✅ Production Chunked Approach (Module 15 Preview)"]
+        D2["📄 leave_policy.txt"] --> C1["Chunk 1: Casual Leave"]
+        D2 --> C2["Chunk 2: Earned Leave"]
+        D2 --> C3["Chunk 3: Sick Leave"]
+        D2 --> C4["Chunk 4: Maternity Leave"]
+        C1 --> E1["Vector 1 (768D)"]
+        C2 --> E2["Vector 2 (768D)"]
+        C3 --> E3["Vector 3 (768D)"]
+        C4 --> E4["Vector 4 (768D)"]
+        E4 --> Note2["🎯 Razor-Sharp Match:\nVector 4 specifically isolates maternity leave!"]
+    end
+```
+
+---
+
+#### B. The Complete In-Memory Document Search Pipeline
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor User
+    participant Script as doc_search.py
+    participant Disk as knowledge_base/ Folder
+    participant Embed as nomic-embed-text (Ollama)
+    participant Memory as documents = [ {source, text, vector} ]
+
+    Script->>Disk: load_documents(): Reads 7 .txt files (utf-8)
+    Disk-->>Script: Returns List of raw texts
+    loop For each Document
+        Script->>Embed: get_embedding(full_text)
+        Embed-->>Script: Returns 768-dimensional float vector
+        Script->>Memory: doc["vector"] = vector
+    end
+    User->>Script: test("How many days for maternity leave?")
+    Script->>Embed: get_embedding(user_query)
+    Embed-->>Script: Returns query_vector
+    loop For each Document in Memory
+        Script->>Script: cosine_similarity(query_vector, doc["vector"])
+    end
+    Script->>Script: Sort results descending by score (reverse=True)
+    Script-->>User: Top-3 Matches: [leave_policy.txt (0.69), medical_policy.txt (0.54), travel_expense.txt (0.51)]
+```
+
+---
+
+### 4. 🔍 Step-by-Step Concept Breakdown (In Exact Lecture Order)
+
+#### A. The Question Nobody Asks: Why Not 1 Document = 1 Embedding?
+Every beginner tutorial says: *"Split text into chunks, then embed."*
+Mik pauses and asks the critical first-principles question:
+> *"Why do we need to split documents into chunks at all? Why can't we simply take each file, pass its full text to the embedding model, generate one vector per file, and search over that?"*
+
+To discover the answer through evidence rather than dogma, we build the unchunked system first and analyze its behavior.
+
+---
+
+#### B. Building the Enterprise Knowledge Base (`knowledge_base/`)
+We constructed a simulated corporate knowledge repository for **Zorvex Technologies** containing 7 distinct business domains:
+
+| File Name | Domain Covered | Key Topics Contained |
+| :--- | :--- | :--- |
+| `hiring_process.txt` | Recruitment & HR | 5 interview rounds, 7-day offer window, 25,000 INR referral bonus, pre-onboarding checklist. |
+| `hr_docs.txt` | Workplace Guidelines | 9:30 AM – 6:30 PM working hours, 2-day hybrid policy, code of conduct, bi-annual reviews. |
+| `leave_policy.txt` | Employee Leaves | 12 casual days, 18 earned days (max 30 carry forward), 10 sick days, 26 weeks maternity, 10 days paternity. |
+| `medical_policy.txt` | Insurance & Health | 500,000 INR sum insured, cashless hospitalization, maternity cover up to 75,000 INR for C-section. |
+| `rca_docs.txt` | Engineering Incidents | P0/P1 post-mortem rules, 24-hour summary, 5-Whys root cause analysis framework. |
+| `tech_docs.txt` | Software Architecture | Docker, Kubernetes, 2-reviewer PR rule, `feat/TICKET-ID` Git branches, Grafana/Loki logs. |
+| `travel_expense.txt` | Business Travel | Economy flights >4 hours, 4,000 INR hotel cap, 1,200 INR per diem, 15-day claim settlement. |
+
+---
+
+#### C. Step 1: Loading Documents from Disk (`load_documents`)
+To ingest the files cleanly into Python:
+1. `os.listdir(folder)`: Discovers all files in the directory.
+2. `sorted()`: Sorts file names alphabetically for deterministic ordering across operating systems.
+3. `filename.endswith(".txt")`: Ignores hidden OS artifacts (e.g. `.DS_Store` on Mac, `Thumbs.db` on Windows).
+4. `os.path.join(folder, filename)`: Safely constructs platform-independent paths (`/` vs `\`).
+5. **The Encoding Standard (`encoding="utf-8"`):**
+   Computers only understand binary bytes (`0`s and `1`s). Different operating systems map bytes to characters using different default code pages (e.g., Windows uses `cp1252`, Linux uses `utf-8`). If a file contains currency symbols (₹, €), smart quotes (“ ”), or emojis, reading without `utf-8` crashes Python with `UnicodeDecodeError`. Specifying `encoding="utf-8"` ensures consistent execution across Windows, Linux, and macOS.
+6. **The `with open(...) as f:` Context Manager:**
+   Automatically closes the file descriptor when execution exits the block, preventing operating system resource leaks.
+
+---
+
+#### D. Step 2: Full-Document Embedding (`add_embeddings`)
+For every document in memory:
+```python
+vector = get_embedding(document["text"])
+document["vector"] = vector
+```
+Each dictionary now holds:
+- `"source"`: File name (e.g., `'leave_policy.txt'`).
+- `"text"`: The full document string.
+- `"vector"`: A 768-dimensional float array representing the entire document.
+
+---
+
+#### E. Step 3: Top-$K$ Semantic Search (`search`)
+1. User query (e.g. *"How many days I will get for maternity leave ?"*) is embedded into a 768-D `query_vector`.
+2. Cosine similarity is computed between `query_vector` and every `document["vector"]`.
+3. Results are sorted in **descending order** by similarity score using a custom Lambda key:
+   ```python
+   results.sort(key=lambda rec: rec["score"], reverse=True)
+   ```
+4. Slice and return the top-$K$ matches (`results[:top_k]`).
+
+---
+
+### 💥 F. The 4 Critical Limitations of Naive Unchunked Search
+
+By testing our naive implementation, we uncovered the 4 reasons why unchunked RAG fails in production:
+
+```text
+┌────────────────────────────────────────────────────────────────────────────────────────┐
+│               THE 4 FATAL FLAWS OF NAIVE UNCHUNKED DOCUMENT RAG                        │
+├──────────────────────────┬─────────────────────────────────────────────────────────────┤
+│ 1. Blurry Vectors        │ Compressing 50 pages into 768 floats washes out details.    │
+│ 2. Ephemeral Storage     │ In-memory embedding on every restart causes slow boot times.│
+│ 3. Context Flooding      │ Sending whole 20-page files causes LLM timeout & distraction│
+│ 4. False-Positive Trap   │ Irrelevant queries still return Top-3 garbage matches.       │
+└──────────────────────────┴─────────────────────────────────────────────────────────────┘
+```
+
+#### 1. Flaw #1: The "Blurry Vector" Problem (Information Loss / Dilution)
+- `leave_policy.txt` covers 5 distinct policies: Casual, Earned, Sick, Maternity, and Paternity.
+- When all 5 policies are merged into one single 768-dimensional vector, the unique semantic signal for "maternity leave" is mathematically averaged out across the entire text.
+- For short 14-line text files, the score is still $0.69$. But in real enterprise PDFs (50–200 pages), an entire document compressed into 768 floats becomes **semantically blurry**. Specific clauses become impossible to distinguish from general background text.
+
+#### 2. Flaw #2: Ephemeral Re-computation on Every Restart
+- In our script, `load_documents()` and `add_embeddings()` run every single time the script executes.
+- For 7 small files, local CPU computes 7 embeddings in ~3 seconds.
+- In an enterprise with 10,000 documents, computing 10,000 embeddings takes **hours**!
+- **Action Item / Solution:** We must decouple document embedding from query time. Embeddings must be persisted to disk (JSON or a Vector Database) so the agent boots in milliseconds.
+
+#### 3. Flaw #3: Context Window Flooding & Model Distraction
+- In naive RAG, once `leave_policy.txt` matches, we must pass the **entire file** into the prompt as `context`.
+- If a document is 30 pages long (~15,000 words):
+  - It exceeds the context window of local models (e.g. 4k/8k tokens).
+  - Processing 15,000 tokens on a local CPU takes 30+ seconds.
+  - The model gets distracted by irrelevant sections (reading about travel and casual leave when the user only asked about maternity leave).
+- **Action Item / Solution:** **Chunking!** By breaking documents into small paragraphs (100–300 words), only the single 3-line paragraph discussing maternity leave is passed to the LLM.
+
+#### 4. Flaw #4: The False-Positive Trap (Irrelevant Query Fallacy)
+- When we tested the query: `"Who is my best friend in my office?"`:
+  - This question is completely absent from Zorvex's knowledge base.
+  - Yet `search(top_k=3)` still returned 3 documents:
+    - `0.46 - hr_docs.txt`
+    - `0.45 - hiring_process.txt`
+    - `0.43 - leave_policy.txt`
+- If we pass these documents to the LLM, the model assumes they contain the answer and attempts to guess or hallucinate.
+- **Action Item / Solution:** **Similarity Threshold Gating!** We must implement a minimum score filter (e.g., `if score < 0.55: return "No relevant information found in knowledge base"`).
+
+---
+
+### 5. 💻 Code Walkthrough & Line-by-Line Anatomy
+
+#### Complete Implementation: `code_snippets/doc_search.py`
+
+[code_snippets/doc_search.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/code_snippets/doc_search.py)
+
+```python
+import os
+from dotenv import load_dotenv
+import numpy as np
+from openai import OpenAI
+
+load_dotenv()
+
+client = OpenAI(
+    base_url=os.getenv("BASE_URL"),
+    api_key=os.getenv("API_KEY")
+)
+
+EMBED_MODEL = os.getenv("EMBED_MODEL", "nomic-embed-text")
+KB_FOLDER = os.getenv("KB_FOLDER", "knowledge_base")
+
+
+def load_documents(folder=KB_FOLDER):
+    """Loads all .txt files from KB folder using UTF-8 encoding."""
+    documents = []
+    for filename in sorted(os.listdir(folder)):
+        if not filename.endswith(".txt"):
+            continue
+
+        path = os.path.join(folder, filename)
+        with open(path, "r", encoding="utf-8") as f:
+            documents.append({
+                "source": filename,
+                "text": f.read()
+            })
+    return documents
+
+
+def get_embedding(text: str):
+    """Generates 768-D embedding via local nomic-embed-text model."""
+    response = client.embeddings.create(
+        model=EMBED_MODEL,
+        input=text
+    )
+    return response.data[0].embedding
+
+
+def cosine_similarity(a, b):
+    """Calculates cosine angle: (A . B) / (||A|| * ||B||)."""
+    dot_prod = np.dot(a, b)
+    norm_a = np.linalg.norm(a)
+    norm_b = np.linalg.norm(b)
+    denom = norm_a * norm_b
+    if denom == 0:
+        return 0.0
+    return float(dot_prod / denom)
+
+
+def add_embeddings(documents):
+    """Generates and attaches a vector embedding to each document."""
+    for document in documents:
+        vector = get_embedding(document["text"])
+        document["vector"] = vector
+    return documents
+
+
+def search(query, documents, top_k=3):
+    """Ranks documents by cosine similarity against user query vector."""
+    query_vector = get_embedding(query)
+    results = []
+
+    for document in documents:
+        score = cosine_similarity(query_vector, document["vector"])
+        results.append({
+            "score": float(score),
+            "source": document["source"],
+            "text": document["text"],
+            "size": len(document["text"])
+        })
+
+    # Custom descending sort on 'score' key
+    results.sort(key=lambda rec: rec["score"], reverse=True)
+    return results[:top_k]
+
+
+def test(user_query, documents, top_k=3):
+    """Executes search and prints formatted top-K results."""
+    print(f"User Query: \"{user_query}\"")
+    results = search(user_query, documents, top_k=top_k)
+    for r in results:
+        print(f"  {r['score']:.2f} - {r['source']} - {r['size']} characters")
+    print()
+```
+
+#### 🔍 Line-by-Line Anatomy:
+- **`os.listdir(folder)` + `sorted()`:** Guarantees deterministic, reproducible document order regardless of filesystem index state.
+- **`encoding="utf-8"`:** Defends against OS-level character encoding corruption (e.g. Windows cp1252 vs. UTF-8).
+- **`denom == 0` Guard:** Prevents division-by-zero crashes if an empty document produces a zero-norm vector.
+- **`results.sort(key=lambda rec: rec["score"], reverse=True)`:** Uses Python's Timsort algorithm to sort dictionaries by their floating-point similarity score in $O(N \log N)$ time.
+- **`results[:top_k]`:** Fast list slice returning only the top candidate documents.
+
+---
+
+### 6. 🧩 Before vs. After Code Evolution Matrix
+
+| Pipeline Stage | Phase 9 (Module 13: Concept Test) | Phase 10 (Module 14: Knowledge Base) | Future Target (Module 15: Chunking & Persistence) |
+| :--- | :--- | :--- | :--- |
+| **Input Source** | Hardcoded Python strings in code | External directory of real business files (`knowledge_base/`) | Document parsers (PDF, Markdown, HTML, Docx). |
+| **Granularity** | Single sentence per vector | Entire multi-page file per vector ($1 \text{ Doc} = 1 \text{ Vector}$) | Paragraph-level sliding-window text chunks ($1 \text{ Doc} = M \text{ Chunks}$). |
+| **Storage Medium** | Temporary variables in RAM | Ephemeral dictionary list in RAM | Persistent Vector Store / Local SQLite Vector DB. |
+| **Search Mechanism** | Direct pairwise comparison | Linear scan across loaded document embeddings | Approximate Nearest Neighbors (ANN) vector indexing. |
+| **Output Ranking** | Printed raw float score | Sorted Top-$K$ ranking with character size telemetry | Score-thresholded chunk context injected into LLM prompt. |
+
+---
+
+### 7. 🏆 The 3 Golden Takeaways
+
+1. **A Document is Too Broad for a Single Vector:** Embedding an entire multi-topic document into one vector blurs specific details. Semantic search thrives on focused, high-density passages.
+2. **Persistence is Mandatory for Scale:** In-memory document loading and embedding on every program startup does not scale beyond toy projects. Real RAG systems embed documents once and store them in persistent vector stores.
+3. **Never Trust Top-$K$ Without a Score Threshold:** An unconstrained Top-$K$ algorithm will always return $K$ items, even if all $K$ items are complete gibberish with near-zero relevance. Production systems must enforce relevance thresholds.
+
+---
+
+### 8. ⚠️ Common Traps & Real-World Gotchas
+
+1. **The Operating System Encoding Trap (`UnicodeDecodeError`):**  
+   - *Problem:* Running `open(path, "r")` without `encoding="utf-8"` works fine on macOS/Linux but crashes on Windows when encountering quotes, dashes, or currency symbols.  
+   - *Fix:* Always write `with open(path, "r", encoding="utf-8") as f:`.
+
+2. **The In-Memory Re-computation Bottleneck:**  
+   - *Problem:* Adding a new test query requires re-embedding all documents from scratch, burning CPU cycles.  
+   - *Fix:* Separate the ingestion pipeline from the query pipeline. Save computed embeddings to disk.
+
+3. **The "Best Match" Illusion:**  
+   - *Problem:* A search query for an out-of-domain topic returns a document with score $0.43$, and the developer assumes it's a valid match because it was ranked #1.  
+   - *Fix:* Rank #1 does not mean relevant; it only means "least unrelated". Check the absolute score before passing context to the LLM.
+
+---
+
+### 9. 🎓 Technical Interview Flashcards
+
+**Q1: Why is chunking considered the most critical pre-processing step in a RAG pipeline?**  
+> **Answer:** Chunking solves two fundamental constraints: representation accuracy and context window limits. Embedding models have finite context lengths, and compressing multi-topic documents into a single vector dilutes semantic specificity (the "blurry vector" problem). Chunking isolates atomic concepts into high-density vectors and ensures that only concise, relevant passages are injected into the LLM prompt.
+
+**Q2: What is the downside of naive Top-$K$ retrieval when a user asks an out-of-domain question?**  
+> **Answer:** Standard Top-$K$ retrieval always returns the $K$ nearest vectors regardless of absolute distance. For out-of-domain queries, it returns the "least irrelevant" documents. If injected into the prompt, this irrelevant noise misleads the LLM into generating hallucinations or confused answers. The fix is applying a minimum similarity threshold or using a binary relevance classifier.
+
+**Q3: How does document size affect Cosine Similarity when whole documents are embedded?**  
+> **Answer:** While Cosine Similarity normalizes vector length mathematically (measuring only directional angle), embedding very large documents forces the transformer's pooling layer to average hundreds of token vectors across unrelated subtopics. This pulls the pooled vector toward the generic center of the latent space, reducing its cosine similarity to specific, detailed user queries.
+
+---
+
+### 10. 🧪 Live Verification & Test Matrix
+
+Tested on local **Intel Core i3** running `nomic-embed-text` with local Ollama:
+
+| Test Run / Query | Target File Expected | Observed Top-1 Score & Document | Status |
+| :--- | :--- | :--- | :---: |
+| **Document Ingestion** | Ingest 7 `.txt` files from `knowledge_base/` | `Loaded 7 document(s). We have embedded 7 documents.` (Clean UTF-8 load) | ✅ **PASS** |
+| `"How many days I will get for maternity leave ?"` | `leave_policy.txt` | **`0.69`** — `leave_policy.txt` (904 chars)<br>*Runner-up:* `0.54` — `medical_policy.txt` | ✅ **PASS** |
+| `"Who is my best friend in my office?"` *(Irrelevant)* | None (Out-of-domain query) | **`0.46`** — `hr_docs.txt`<br>*Reveals Flaw #4: False-positive Top-K return!* | ✅ **PASS** |
+
+---
+
