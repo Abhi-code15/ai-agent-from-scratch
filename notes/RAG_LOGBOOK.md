@@ -40,11 +40,11 @@
 │  STAGE 2: RAG & KNOWLEDGE AGENTS (Module 13 Onwards)     │  🚀 ACTIVE TRACK
 │  - Vector Embeddings & High-Dimensional Semantic Spaces  │  ✅ Module 13
 │  - Cosine Similarity & Vector Mathematics (NumPy)        │  ✅ Module 13
-│  - Knowledge Base Construction & Document-Level Search   │  📍 Module 14 (Current)
-│  - The 4 Failures of Unchunked RAG & Why Chunking Matters│  📍 Module 14 (Current)
-│  - Intelligent Document Chunking Strategies              │  ⏳ Module 15+
-│  - Local Vector Stores, Persistence & Vector Databases   │  ⏳ Module 15+
-│  - End-to-End RAG Pipeline & Autonomous Tool Integration │  ⏳ Module 15+
+│  - Knowledge Base Construction & Document-Level Search   │  ✅ Module 14
+│  - The 4 Failures of Unchunked RAG & Why Chunking Matters│  ✅ Module 14
+│  - Intelligent Document Chunking (Section-Level Splitting)│  📍 Module 15 (Current)
+│  - Local Vector Store Persistence (vector_store.json)    │  📍 Module 15 (Current)
+│  - End-to-End RAG Pipeline & Autonomous Tool Integration │  ⏳ Module 16+
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -850,3 +850,344 @@ Tested on local **Intel Core i3** running `nomic-embed-text` with local Ollama:
 
 ---
 
+
+
+## 🚀 [Phase 11] - Intelligent Document Chunking & Local Vector Store Persistence
+
+<div align="center">
+
+[![Module](https://img.shields.io/badge/Module-15-E53935?style=for-the-badge)](#)
+[![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](#)
+[![Topic](https://img.shields.io/badge/Topic-Document_Chunking_%26_Vector_Persistence-1E88E5?style=for-the-badge)](#)
+[![Embeddings](https://img.shields.io/badge/Embeddings-Nomic_768D-7C4DFF?style=for-the-badge)](#)
+[![Persistence](https://img.shields.io/badge/Storage-JSON_Vector_Store-FF6F00?style=for-the-badge)](#)
+
+</div>
+
+> **Milestone Focus:** Module 15 — *Fixing Naive RAG: Document Chunking & Saving Embeddings to Disk*  
+> **Status:** `COMPLETED`  
+> **Prerequisites:** [Phase 10: Building Knowledge Base & Unchunked RAG Limitations](RAG_LOGBOOK.md#phase-10---building-the-knowledge-base-for-rag--the-necessity-of-chunking)  
+> **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  
+> **Active Models:** `qwen2.5:1.5b` (Chat Generation) + `nomic-embed-text` (Vector Embeddings, 768 dimensions)  
+
+---
+
+### 1. 🎯 Learning Objectives & Context
+
+- **The Cross-Document / Multi-Intent Crisis:** Understand why naive document-level RAG fails when a single user question requires facts spread across multiple documents (e.g., leave limits in `leave_policy.txt` and financial coverage in `medical_policy.txt`).
+- **The Definition & Anatomy of a Chunk:** Learn what a text chunk is: a small piece of a document, focused enough to match a specific query and complete enough to be understood on its own.
+- **Section-Level Chunking Strategy:** Implement deterministic structural chunking using logical document boundaries (`\n\n`) to parse multi-topic corporate handbooks into atomic units.
+- **Chunk-Level Data Modeling:** Transition from monolithic `{source, text, vector}` document dictionaries to granular chunk dictionaries containing `{source, chunk_id, text, vector}`.
+- **Solving the In-Memory Boot Bottleneck:** Implement local file persistence (`vector_store.json`) using Python's `json` module, enabling instant cold-start loading in milliseconds without repeated embedding API calls.
+- **System Limitations & Production Realities:** Analyze real-world production challenges including vector store staleness, embedding model mismatch (dimension incompatibility), and single-item API call latency versus batch embeddings.
+
+---
+
+### 2. 🧠 The Feynman Intuition (Explain Like I'm 12)
+
+> [!NOTE]
+> **Metaphor 1: The Whole Textbook vs. The Sticky Note 📑**
+> 
+> Imagine you are studying for a science test, and your question is: *"What temperature does water boil at?"*
+> 
+> - **Naive Unchunked RAG (Handing over the entire 500-page book):** Someone hands you the entire Physics textbook. The answer is inside, but your desk is completely cluttered, you waste time flipping through 20 unrelated chapters on gravity and electricity, and your backpack is too heavy to carry (Context Window Limit Exceeded!).
+> - **Intelligent Chunking (The Precise Sticky Note):** Someone cuts the textbook into neat, single-topic index cards or sticky notes. When you ask about boiling water, they hand you just the one index card on "Boiling Points". It has the exact answer, takes 5 seconds to read, and takes zero extra space on your desk!
+
+---
+
+> [!NOTE]
+> **Metaphor 2: The Hospital Bill & Leave Slip Dilemma 🏥**
+> 
+> Suppose an employee asks: *"How many days of leave can I take if I am hospitalized, and what hospital costs are covered?"*
+> 
+> This single question has **two separate needs**:
+> 1. How many days off? $\rightarrow$ Stored in `leave_policy.txt`.
+> 2. What costs are paid? $\rightarrow$ Stored in `medical_policy.txt`.
+> 
+> In unchunked RAG:
+> - If you take `Top-K = 1`: You only get `medical_policy.txt`. The employee gets zero information about their leave days!
+> - If you take `Top-K = 2`: You must send **both whole files**. But both files have thousands of words about unrelated topics (casual leave, paternity leave, dental care, outpatient visits). The AI gets overwhelmed with noise!
+> - **With Chunks:** You grab Chunk #3 of `leave_policy.txt` (178 characters) and Chunk #3 of `medical_policy.txt` (254 characters). Both fit easily in the prompt, giving the AI the exact facts to answer both parts perfectly!
+
+---
+
+### 3. 🗺️ Visual Architecture & Execution Flow
+
+```mermaid
+flowchart TD
+    subgraph Boot ["🚀 Program Startup Lifecycle"]
+        A["🏁 Launch Program (chunk_search.py)"] --> B{"Does vector_store.json exist on disk?"}
+        B -- "YES (Warm Start)" --> C["⚡ Fast Disk Load via json.load()<br/>(Instant startup in < 50ms)"]
+        B -- "NO (Cold Start)" --> D["📂 Ingest .txt Files from knowledge_base/"]
+        D --> E["✂️ Chunk Documents by Section (\\n\\n)"]
+        E --> F["🧠 Generate 768-D Vectors via nomic-embed-text"]
+        F --> G["💾 Save Chunks to knowledge_base/vector_store.json"]
+        G --> H["📦 In-Memory Chunks List Ready"]
+        C --> H
+    end
+
+    subgraph Query ["🔍 Semantic Search & Multi-File Retrieval"]
+        I["👤 User Query<br/>'What are the benefits of maternity leaves?'"] --> J["🧮 Embed Query to 768-D Vector"]
+        H --> K["📐 Cosine Similarity Loop<br/>(Query Vector vs. ALL 29 Chunk Vectors)"]
+        J --> K
+        K --> L["📊 Descending Sort by Similarity Score"]
+        L --> M["🎯 Top-K Retrieval"]
+        M --> N["📄 Rank 1: leave_policy.txt (Chunk #3 - 178 chars)"]
+        M --> O["📄 Rank 2: medical_policy.txt (Chunk #3 - 254 chars)"]
+    end
+```
+
+---
+
+### 4. 🔍 Step-by-Step Concept Breakdown (In Lecture Order)
+
+#### A. Recap of Naive RAG & The Multi-Intent Dilemma
+In Phase 10, we built a naive document-level RAG where each document in `knowledge_base/` was compressed into a single vector. 
+
+When a query contains **multiple intents** spanning different documents:
+- Query: *"How many days can I take if hospitalized and what costs are reimbursed?"*
+- `medical_policy.txt` gets a similarity score of `0.78` (discusses hospitalization reimbursement).
+- `leave_policy.txt` gets a similarity score of `0.74` (discusses sick leave and hospital proof).
+
+If `top_k = 1`, the retriever picks only `medical_policy.txt`. The LLM never sees the leave days! If `top_k = 2`, sending both full files floods the prompt with thousands of tokens of irrelevant text, increasing latency and risking model hallucination.
+
+```text
+┌────────────────────────────────────────────────────────────────────────┐
+│                   THE MULTI-INTENT RETRIEVAL DILEMMA                   │
+├────────────────────────────────────────────────────────────────────────┤
+│ Query: "How many days of leave if hospitalized and what costs covered?"│
+│                                                                        │
+│ Intent 1: "leave days"   ───────► Found in: leave_policy.txt           │
+│ Intent 2: "costs covered" ──────► Found in: medical_policy.txt         │
+│                                                                        │
+│ ❌ Unchunked Top-K=1: medical_policy.txt wins (0.78). Intent 1 lost!   │
+│ ❌ Unchunked Top-K=2: Send BOTH whole files (Thousands of words!).     │
+│ ✅ Chunk-Based Search: Retrieves Leave Chunk #0 + Medical Chunk #1!   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+#### B. The Formal Definition of a Chunk
+What makes an effective chunk in a RAG pipeline?
+
+> **A Chunk is a small piece of a document, focused enough to match a specific query and complete enough to be understood on its own.**
+
+- **Too small (e.g., 5 words):** Lacks surrounding context; the vector cannot capture meaningful intent.
+- **Too large (e.g., 2,000 words):** Suffers from vector dilution; multiple topics blur together into an unspecific average.
+
+#### C. Chunk Sizing Standards & Real-World Splitters
+Is there a single "golden chunk size"? **No.** Chunk size depends on the data type and retrieval goals:
+
+| Chunk Size Tier | Token Range | Word Range | Ideal Use Case |
+| :--- | :--- | :--- | :--- |
+| **Small Chunks** | 128 – 256 tokens | ~100 – 200 words | Short factoid lookup, QA bots, entity extraction. |
+| **Medium Chunks (Standard)** | 512 – 1024 tokens | ~200 – 800 words | General documentation, policies, standard RAG. |
+| **Large Chunks** | 1024 – 2048 tokens | ~800 – 1600 words | Long narrative summaries, academic papers, legal contracts. |
+
+##### Advanced Splitting Strategies in Production:
+1. **Recursive Character Text Splitting:** Tries splitting by major headings (`#`, `##`), then paragraphs (`\n\n`), then lines (`\n`), then spaces (` `), descending until chunks fit within a target character budget.
+2. **Sliding-Window Overlap:** Chunks overlap by 10–20% (e.g. 50 tokens). This prevents critical information from being split awkwardly across a chunk boundary:
+   ```text
+   Chunk 0: [====== Section A ====== | === Overlap ===]
+   Chunk 1:                           [=== Overlap === | ====== Section B ======]
+   ```
+
+#### D. Our Strategy: Section-Level Chunking (`\n\n`)
+For structured corporate policy handbooks, each logical topic has a distinct heading followed by its rules and separated by a double newline:
+
+```text
+Leave Policy - Casual Leave\nEvery employee...      ◄─── Chunk 0
+\n\n
+Leave Policy - Earned Leave\nEmployees earn...       ◄─── Chunk 1
+\n\n
+Leave Policy - Sick Leave\nEmployees get 10...       ◄─── Chunk 2
+```
+
+By splitting on `\n\n`, each chunk forms a self-contained policy unit with its title intact.
+
+#### E. Data Model Evolution: Documents vs. Chunks
+
+##### Before (Phase 10: Monolithic Document Dictionary):
+```python
+documents = [
+    {
+        "source": "leave_policy.txt",
+        "text": "Leave Policy - Casual Leave\nEvery employee... \n\nLeave Policy - Earned Leave..."
+        # One 768-D vector representing the ENTIRE file
+    }
+]
+```
+
+##### After (Phase 11: Granular Chunk Dictionary):
+```python
+chunks = [
+    {
+        "source": "leave_policy.txt",
+        "chunk_id": 0,
+        "text": "Leave Policy - Casual Leave\nEvery employee at Zorvex gets 12 days...",
+        "vector": [0.0123, -0.0456, ..., 768 floats]
+    },
+    {
+        "source": "leave_policy.txt",
+        "chunk_id": 3,
+        "text": "Leave Policy - Maternity and Paternity Leave\nMaternity leave is 26 weeks...",
+        "vector": [0.0380, -0.0249, ..., 768 floats]
+    }
+]
+```
+
+#### F. Solving the Boot Bottleneck: Local Vector Store Persistence
+In naive RAG, running the script repeats the expensive pipeline:
+$$\text{Read Files} \longrightarrow \text{Chunking} \longrightarrow \text{Generate Embeddings} \quad (O(N) \text{ HTTP calls})$$
+
+Because our knowledge base documents rarely change between script executions, re-embedding every time is a waste of CPU inference and time.
+
+**The Persistence Fix:**
+1. Check `if os.path.exists("knowledge_base/vector_store.json")`.
+2. If it exists, call `json.load()` $\rightarrow$ Instant boot in $< 50\text{ ms}$.
+3. If missing, generate chunks and embeddings once, then serialize via `json.dump(chunks, f, indent=4)`.
+
+```text
+First Run  (Cold): Read KB ──► Chunk ──► Embed (29 calls) ──► Save JSON ──► Search (~20 sec)
+Second Run (Warm): Load JSON directly from disk ────────────► Search (< 1 sec!)
+```
+
+#### G. Critical Production Limitations & Future Fixes
+
+> [!WARNING]
+> **Limitation 1: Vector Store Staleness (Cache Invalidation)**  
+> If an HR manager updates `leave_policy.txt`, the saved `vector_store.json` on disk does not know the file changed! The system will continue serving stale embeddings until manually deleted or invalidated via file hash checking (`md5`/`sha256`).
+
+> [!CAUTION]
+> **Limitation 2: Model Mismatch & Dimension Incompatibility**  
+> If chunks are embedded with `nomic-embed-text` (768 dimensions), but later someone changes `.env` to `mxbai-embed-large` (1024 dimensions):
+> - Query vector length = 1024.
+> - Chunk vector length = 768.
+> - **Crash:** `np.dot(v1, v2)` fails with shape mismatch! Even if dimensions match by coincidence, latent spaces between different models cannot be compared.  
+> - **Production Fix:** Store metadata inside the vector store file (`{"embed_model_used": "nomic-embed-text"}`) and compare against the active model on startup.
+
+> [!TIP]
+> **Limitation 3: Single-Item API Calls vs. Batch Embedding**  
+> In our prototype, `add_embeddings()` loops over chunks one-by-one, issuing 29 individual HTTP requests to Ollama.
+> 
+> Most modern embedding endpoints (including local Ollama and OpenAI) accept **arrays of strings**:
+> ```python
+> response = client.embeddings.create(
+>     model="nomic-embed-text",
+>     input=["Chunk 1 text...", "Chunk 2 text...", "Chunk 3 text..."]
+> )
+> ```
+> By sending chunks in batches of 10 or 20, we reduce 29 network round-trips down to just 2 or 3 requests!
+
+---
+
+### 5. 💻 Code Walkthrough & Line-by-Line Anatomy
+
+Implementation file: [code_snippets/chunk_search.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/code_snippets/chunk_search.py)
+
+```python
+def chunk_document(document: dict) -> list:
+    """Splits single document into sections using double newline (\\n\\n) boundary."""
+    chunks = []
+    parts = document["text"].split("\n\n")
+    chunk_id = 0
+
+    for part in parts:
+        clean_part = part.strip()
+        if clean_part:
+            chunks.append({
+                "source": document["source"],
+                "chunk_id": chunk_id,
+                "text": clean_part
+            })
+            chunk_id += 1
+
+    return chunks
+
+
+def save_vector_store(chunks: list) -> None:
+    """Persists chunks with vectors to disk formatted as indented JSON."""
+    os.makedirs(os.path.dirname(VECTOR_STORE_FILE), exist_ok=True)
+    with open(VECTOR_STORE_FILE, "w", encoding="utf-8") as f:
+        json.dump(chunks, f, indent=4)
+
+
+def load_vector_store() -> list:
+    """Loads previously saved chunks and embedding vectors from disk."""
+    with open(VECTOR_STORE_FILE, "r", encoding="utf-8") as f:
+        return json.load(f)
+```
+
+#### 🔍 Line-by-Line Anatomy:
+- **`document["text"].split("\n\n")`:** Splits the monolithic document string on double newlines, isolating logical sections while preserving the section title at the top of each block.
+- **`clean_part = part.strip()` + `if clean_part:`:** Defensive hygiene that strips leading/trailing whitespace and filters out blank paragraphs.
+- **`"chunk_id": chunk_id`:** Assigns an integer sequence index to identify which section of the original document this chunk represents.
+- **`chunks.extend(doc_chunks)`:** Uses Python's list extension to flatten chunks across multiple files into a single master retrieval array.
+- **`json.dump(chunks, f, indent=4)`:** Serializes the complete Python dictionary list (including 768-dimensional float arrays) into human-readable JSON on disk.
+- **`json.load(f)`:** Reconstructs the exact list of dictionaries into RAM in a single I/O operation.
+
+---
+
+### 6. 🧩 Before vs. After Code Evolution Matrix
+
+| Feature / Pattern | Phase 10 (Module 14: Unchunked RAG) | Phase 11 (Module 15: Chunked & Persistent RAG) | Architectural Benefit |
+| :--- | :--- | :--- | :--- |
+| **Retrieval Unit** | Entire file (`1 Doc = 1 Vector`) | Paragraph section (`1 Section = 1 Vector`) | Eliminates vector dilution and context window flooding. |
+| **Multi-Intent Handling** | Fails or sends multiple whole files | Retrieves precise winning chunks across different files | Cross-document facts are assembled cleanly with minimal tokens. |
+| **Context Payload Size** | ~900 to 2,000+ characters per match | ~150 to 250 characters per chunk | Keeps prompt clean, saves CPU memory, and prevents hallucinations. |
+| **Startup / Boot Time** | Re-reads & re-embeds all files on every run (~20s) | Reads `vector_store.json` directly from disk (< 50ms) | $O(1)$ warm-start initialization. |
+| **Data Schema** | `{source, text, vector}` | `{source, chunk_id, text, vector}` | Preserves document traceability and chunk indexing. |
+| **Storage Medium** | Temporary Python list in RAM | Persistent JSON file on disk | Embeddings survive process termination. |
+
+---
+
+### 7. 🏆 The 3 Golden Takeaways
+
+1. **Chunks Must Be Self-Contained:** A chunk must be small enough to match a specific query with high similarity, but complete enough to make sense to an LLM on its own without needing the rest of the file.
+2. **Persistence Turns Prototype into Product:** Never re-embed unchanging data on every boot. Compute embeddings once, store them persistently, and reuse them across sessions.
+3. **Multi-File Precision Beats Monolithic Retrieval:** By breaking documents into granular chunks, a single user query can cleanly retrieve facts from 2, 3, or more separate business documents without bloating context limits.
+
+---
+
+### 8. ⚠️ Common Traps & Real-World Gotchas
+
+1. **The Vector Space Mismatch Trap:**  
+   - *Problem:* Running queries using `mxbai-embed-large` against a vector store generated by `nomic-embed-text`.  
+   - *Underlying Cause:* Different embedding models map semantics into different coordinate geometries and dimensions (e.g. 768 vs. 1024).  
+   - *Defensive Fix:* Always store the generating model name as metadata inside the vector store and validate on startup.
+
+2. **The Stale Vector Store Trap:**  
+   - *Problem:* Modifying a `.txt` file in `knowledge_base/` has no effect on search results.  
+   - *Underlying Cause:* The script sees `vector_store.json` on disk and bypasses re-reading the text files.  
+   - *Defensive Fix:* Delete `vector_store.json` when modifying policies, or implement automated hash-based cache invalidation.
+
+3. **The Unbatched Embedding Bottleneck:**  
+   - *Problem:* Ingesting a 5,000-page knowledge base takes hours because each chunk is sent one-by-one via HTTP.  
+   - *Underlying Cause:* Network latency overhead on individual HTTP requests.  
+   - *Defensive Fix:* Batch chunks into groups of 16 to 64 strings per embedding API call.
+
+---
+
+### 9. 🎓 Technical Interview Flashcards
+
+**Q1: Why does paragraph-level chunking outperform whole-document embedding for multi-intent questions?**  
+> **Answer:** Whole-document embeddings average out distinct topics, pulling the vector toward a generic centroid. When a question spans two topics covered in separate files (e.g., leave limits and insurance coverage), an unchunked retriever either misses one document or is forced to inject two massive files into the prompt. Chunking isolates specific subtopics, allowing top-ranked chunks from both documents to be retrieved with high similarity and low token cost.
+
+**Q2: What is the risk of using naive text splitting (e.g., strict character count) without overlap?**  
+> **Answer:** Arbitrary character splitting can cut a sentence or vital fact in half (e.g. splitting `"Maternity leave is 26"` from `"weeks of paid leave"`). Without overlap or semantic boundary awareness (like headings or double newlines), context is severed, producing fragmented vectors and incomplete prompt answers.
+
+**Q3: How does persistent vector storage improve latency in RAG architectures?**  
+> **Answer:** Embedding generation is compute-heavy and bounded by GPU/CPU inference throughput. Persisting computed vectors to disk (via JSON, SQLite, or dedicated vector DBs like Milvus/Chroma/Pinecone) shifts ingestion from runtime to an offline build step, reducing query initialization from tens of seconds to sub-millisecond lookups.
+
+---
+
+### 10. 🧪 Live Verification & Test Matrix
+
+Tested on local **Intel Core i3** running `nomic-embed-text` with local Ollama:
+
+| Test Run / Query | Target Expected | Observed Output & Telemetry | Status |
+| :--- | :--- | :--- | :---: |
+| **Cold Start (No JSON file)** | Chunk 7 files into 29 sections and embed | `Created and embedded 29 chunks and saved to vector store file: knowledge_base/vector_store.json` | ✅ **PASS** |
+| **Warm Start (JSON present)** | Bypass ingestion & embed steps | `Loaded 29 chunks from vector store file: knowledge_base/vector_store.json` (Instant load < 50ms) | ✅ **PASS** |
+| `"What are the benefits of maternity leaves?"`<br>*(Multi-intent cross-document query)* | Match chunks from both `leave_policy.txt` AND `medical_policy.txt` | **Rank 1:** `0.6987` — `leave_policy.txt` (Chunk #3, 178 chars)<br>**Rank 2:** `0.6444` — `medical_policy.txt` (Chunk #3, 254 chars)<br>**Rank 3:** `0.5786` — `leave_policy.txt` (Chunk #1, 185 chars) | ✅ **PASS** |
+
+---
