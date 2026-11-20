@@ -42,9 +42,10 @@
 │  - Cosine Similarity & Vector Mathematics (NumPy)        │  ✅ Module 13
 │  - Knowledge Base Construction & Document-Level Search   │  ✅ Module 14
 │  - The 4 Failures of Unchunked RAG & Why Chunking Matters│  ✅ Module 14
-│  - Intelligent Document Chunking (Section-Level Splitting)│  📍 Module 15 (Current)
-│  - Local Vector Store Persistence (vector_store.json)    │  📍 Module 15 (Current)
-│  - End-to-End RAG Pipeline & Autonomous Tool Integration │  ⏳ Module 16+
+│  - Intelligent Document Chunking (Section-Level Splitting)│  ✅ Module 15
+│  - Local Vector Store Persistence (vector_store.json)    │  ✅ Module 15
+│  - Agentic RAG: Tool-Based Retrieval & Source Citations  │  📍 Module 16 (Current)
+│  - Enterprise Scale & Vector Database Architecture       │  ⏳ Module 17+
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -1189,5 +1190,316 @@ Tested on local **Intel Core i3** running `nomic-embed-text` with local Ollama:
 | **Cold Start (No JSON file)** | Chunk 7 files into 29 sections and embed | `Created and embedded 29 chunks and saved to vector store file: knowledge_base/vector_store.json` | ✅ **PASS** |
 | **Warm Start (JSON present)** | Bypass ingestion & embed steps | `Loaded 29 chunks from vector store file: knowledge_base/vector_store.json` (Instant load < 50ms) | ✅ **PASS** |
 | `"What are the benefits of maternity leaves?"`<br>*(Multi-intent cross-document query)* | Match chunks from both `leave_policy.txt` AND `medical_policy.txt` | **Rank 1:** `0.6987` — `leave_policy.txt` (Chunk #3, 178 chars)<br>**Rank 2:** `0.6444` — `medical_policy.txt` (Chunk #3, 254 chars)<br>**Rank 3:** `0.5786` — `leave_policy.txt` (Chunk #1, 185 chars) | ✅ **PASS** |
+
+---
+
+
+## 🚀 [Phase 12] - Agentic RAG: Integrating RAG into the AI Agent via Tool Calling
+
+<div align="center">
+
+[![Module](https://img.shields.io/badge/Module-16-E53935?style=for-the-badge)](#)
+[![Status](https://img.shields.io/badge/Status-COMPLETED-00C853?style=for-the-badge)](#)
+[![Topic](https://img.shields.io/badge/Topic-Agentic_RAG_%26_Tool_Integration-1E88E5?style=for-the-badge)](#)
+[![Architecture](https://img.shields.io/badge/Pattern-Single_Responsibility_Principle-7C4DFF?style=for-the-badge)](#)
+[![Citations](https://img.shields.io/badge/Guardrail-Source_Attribution-00C853?style=for-the-badge)](#)
+
+</div>
+
+> **Milestone Focus:** Module 16 — *Agentic RAG: Integrating Knowledge Retrieval as an Autonomous Agent Tool*  
+> **Status:** `COMPLETED`  
+> **Prerequisites:** [Phase 11: Intelligent Document Chunking & Vector Store Persistence](RAG_LOGBOOK.md#phase-11---intelligent-document-chunking--local-vector-store-persistence)  
+> **Hardware Profile:** Intel Core i3 (CPU Inference, Local Ollama, 0 API Cost)  
+> **Active Models:** `qwen2.5:1.5b` (Chat Generation) + `nomic-embed-text` (Vector Embeddings, 768 dimensions)  
+
+---
+
+### 1. 🎯 Learning Objectives & Context
+
+- **The Autonomous Retrieval Paradigm:** Move beyond manual or hardcoded retrieval scripts by enabling the LLM to autonomously decide **when** to search private company documentation and **when** to answer from general knowledge.
+- **The Concept of Agentic RAG:** Master the industry-standard architecture where RAG is modeled not as a rigid pre-prompt step, but as a callable **Function Tool** (`search_knowledge_base`).
+- **Clean Architecture & The Single Responsibility Principle (SRP):**
+  - **[rag.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/rag.py):** Encapsulates document loading, section chunking, embedding generation, vector persistence, and top-$K$ semantic similarity search.
+  - **[tools.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/tools.py):** Wraps `rag.search()` into a tool definition, formats retrieved chunks into structured citation blocks, and dispatches calls.
+  - **[simple_ai_assistant.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/simple_ai_assistant.py):** **Zero changes to the core agent loop!** The existing agent loop executes the tool seamlessly without altering conversation orchestration or streaming mechanics.
+- **Precision Grounding & Source Citations:** Guide the model via a specialized system prompt to answer company policy questions exclusively from retrieved text and cite exact document sources (e.g., `(leave_policy.txt #3)`).
+- **Industrial Scale & Production Failure Modes:** Analyze real-world enterprise trade-offs including small model tool-skipping, semantic drift in compact embedding models, vector store staleness, and the $O(N)$ linear scan bottleneck versus dedicated vector databases (Chroma, Milvus, Pinecone).
+
+---
+
+### 2. 🧠 The Feynman Intuition (Explain Like I'm 12)
+
+> [!NOTE]
+> **Metaphor 1: The Trial Lawyer and the Paralegal ⚖️**
+> 
+> Imagine you hire a brilliant trial lawyer (the LLM). She graduated top of her class and knows constitutional law, science, and history inside and out (General Knowledge).
+> 
+> But you ask her: *"What is the exact maternity leave bonus at Zorvex Technologies in 2026?"*
+> 
+> The lawyer has never worked at Zorvex; that information is private! 
+> - **A Bad Lawyer (Hallucination):** Tries to guess or make up a number so she doesn't look uneducated.
+> - **Agentic RAG (The Professional Lawyer):** She doesn't guess. She presses an intercom on her desk and tells her paralegal (the Tool):  
+>   *"Please check the Zorvex HR archive for maternity benefits!"* (`search_knowledge_base`)  
+>   The paralegal pulls two specific file folders (`leave_policy.txt #3` and `medical_policy.txt #3`), places them on her desk, and leaves.  
+>   The lawyer reads those exact pages, explains the benefits to you clearly, and points to the folder: *"According to Leave Policy section 3, you receive 26 weeks of paid leave."*
+
+---
+
+> [!NOTE]
+> **Metaphor 2: The Multi-Tool Utility Belt 🛠️**
+> 
+> Think of our AI Agent as a technician wearing a tool belt:
+> - Slot 1: A thermometer (`get_city_weather`)
+> - Slot 2: A watch (`get_current_time`)
+> - Slot 3: A compass (`get_user_city`)
+> - Slot 4: A company handbook index (`search_knowledge_base`)
+> 
+> When you ask: *"What is the weather in Pune?"*, the agent grabs the thermometer.  
+> When you ask: *"How many days of sick leave do I have?"*, the agent grabs the company handbook.  
+> The agent chooses the right tool for the job completely on its own!
+
+---
+
+### 3. 🗺️ Visual Architecture & Execution Flow
+
+```mermaid
+flowchart TD
+    subgraph UserInteraction ["👤 User Input"]
+        U["User Query: 'What are the benefits of maternity leaves in Zorvex Technologies?'"]
+    end
+
+    subgraph AgentLoop ["🤖 Autonomous Agent Loop (simple_ai_assistant.py)"]
+        U --> LLM1["Send Messages + Tool Definitions to LLM (qwen2.5:1.5b)"]
+        LLM1 --> Decision{"Does Query Require Internal Company Facts?"}
+        
+        Decision -- "No (e.g. General Knowledge / Weather)" --> ToolOrChat["Call Weather Tool OR Stream Direct Answer"]
+        Decision -- "Yes (Company Policy Query)" --> ToolCall["Model emits tool_call:<br/>search_knowledge_base(query='maternity leave benefits')"]
+    end
+
+    subgraph RAGSubsystem ["📚 RAG Engine (rag.py & tools.py)"]
+        ToolCall --> Dispatcher["tools.run_tool() invokes search_knowledge_base()"]
+        Dispatcher --> Search["rag.search(query='maternity leave benefits', top_k=2)"]
+        Search --> Embed["Embed Query Vector via nomic-embed-text (768-D)"]
+        Embed --> Cosine["Cosine Similarity Scan against 29 persistent Chunks"]
+        Cosine --> ChunksRetrieved["Top 2 Chunks Retrieved:<br/>1. leave_policy.txt #3 (Score: 0.78)<br/>2. medical_policy.txt #3 (Score: 0.66)"]
+        ChunksRetrieved --> Formatter["Format Chunks into Annotated Context String:<br/>[leave_policy.txt #3]\nMaternity leave is 26 weeks...<br/><br/>[medical_policy.txt #3]\nMaternity expenses covered up to 50,000..."]
+    end
+
+    subgraph Synthesis ["💬 Grounded Response Generation"]
+        Formatter --> AppendTool["Append Tool Response (role: 'tool') into Conversation History"]
+        AppendTool --> LLM2["Second Model Call: LLM Synthesizes Answer from Tool Output"]
+        LLM2 --> FinalAnswer["🤖 Final Grounded Answer with Source Citations:<br/>'In Zorvex Technologies, maternity leave is 26 weeks of paid leave... (leave_policy.txt #3)'"]
+    end
+```
+
+---
+
+### 4. 🔍 Step-by-Step Concept Breakdown (In Lecture Order)
+
+#### A. Recap: Up to Module 15
+In the preceding modules, we completed the core mechanics of RAG:
+1. **Knowledge Ingestion:** Reading local `.txt` policy files from `knowledge_base/`.
+2. **Section Chunking:** Splitting documents logically on `\n\n` boundaries so each section remains self-contained.
+3. **Vector Embeddings:** Transforming passages into 768-dimensional semantic coordinate vectors using `nomic-embed-text`.
+4. **Persistent Vector Store:** Saving chunks and vectors to `knowledge_base/vector_store.json` for fast warm boots.
+
+#### B. The Core Dilemma: How Does the Model Know When to Trigger RAG?
+When a user types a query into our assistant, how does the system know whether to:
+- Answer from general model memory (e.g., *"What is Python?"*),
+- Call an external REST API (e.g., *"Weather in Pune"*), or
+- Hit the internal document database (e.g., *"Maternity leave policy"* )?
+
+In naive setups, developers hardcode a search before every prompt. But searching your internal documents for *"Tell me a joke"* or *"What is 2 + 2?"* wastes compute, pollutes the context window, and slows down inference.
+
+#### C. The Industry Solution: Agentic RAG via Function Calling
+In production systems, RAG is integrated as a **Tool** that the model can call on demand.
+1. We define a tool named `search_knowledge_base`.
+2. We provide a clear JSON Schema description explaining that this tool searches Zorvex Technologies' internal policies.
+3. When the user asks a company-related question, the model inspects its available tools, sees `search_knowledge_base`, and requests a tool call.
+4. The Python agent executes the tool, feeds the retrieved passages back as role `tool`, and the model synthesizes the answer.
+5. The decision to search is **100% autonomous and dynamic**!
+
+#### D. Clean Code Architecture & SRP (Single Responsibility Principle)
+A critical engineering milestone in this phase is the clean separation of concerns across files:
+
+```text
+ai-agent-scratch/
+├── rag.py                    ◄── Dedicated RAG Engine (Load, Chunk, Embed, Search)
+├── tools.py                  ◄── Tool Definitions & Dispatcher (search_knowledge_base)
+├── simple_ai_assistant.py    ◄── Agent Conversational Orchestrator & Streaming Loop
+└── knowledge_base/
+    ├── *.txt                 ◄── Raw Business Handbooks
+    └── vector_store.json     ◄── Persistent Precomputed Embeddings
+```
+
+> [!TIP]
+> **The Beauty of Zero-Agent-Code Changes:**  
+> We did **NOT** need to modify a single line of the agent loop in `simple_ai_assistant.py`! Because our agent was already designed to handle generic tool calling, adding RAG was as simple as adding another function to `tools.py`.
+
+#### E. Formatting Multi-Chunk Context for LLMs
+When `search(query, top_k=2)` returns multiple matching chunks, sending raw Python dictionaries to the LLM confuses the model.
+
+Instead, we concatenate chunks into an annotated Markdown block where each passage is prefixed with its document source and chunk ID:
+
+```text
+[leave_policy.txt #3]
+Leave Policy - Maternity and Paternity Leave
+Maternity leave is 26 weeks of paid leave. Paternity leave is 10 working days and must be taken within 3 months of the child's birth.
+
+[medical_policy.txt #3]
+Medical Policy - Maternity Cover
+The policy covers maternity expenses up to 50,000 rupees for normal delivery and 75,000 rupees for caesarean section. Pre-hospitalization and post-hospitalization medical bills are covered for 30 and 60 days respectively.
+```
+
+This formatting makes it effortless for the LLM to read the facts and cite the exact source file and section number.
+
+#### F. System Prompt Grounding & Hallucination Prevention
+To ensure the LLM does not fabricate company policies, we update `SYSTEM_PROMPT` to enforce strict grounding:
+
+```python
+SYSTEM_PROMPT = (
+    "You are a helpful and humble assistant for Zorvex Technologies employees. "
+    "Answer general questions (programming, science, advice) from your own knowledge. "
+    "Use get_current_time, get_city_weather, and get_user_city only for the current time, the weather, or the user's city. "
+    "Use search_knowledge_base whenever the user asks about Zorvex company policies, leave, maternity, benefits, medical insurance, HR, hiring, tech docs, or travel expenses. "
+    "Answer company questions ONLY from the text that search_knowledge_base returns. "
+    "Cite the source file and chunk like (leave_policy.txt #3). "
+    "Keep answers under 100 words."
+)
+```
+
+#### G. Five Real-World Limitations & Production Fixes (Slide 10)
+
+| # | Real-World Limitation | Root Cause | Production Engineering Fix |
+| :-: | :--- | :--- | :--- |
+| **1** | **Small Model Tool-Skipping** | Compact models (`qwen2.5:1.5b`, `qwen:4b`) have lower reasoning capacity and may occasionally try to answer directly. | Provide clear, positive tool instructions in the system prompt; avoid complex negative clauses that trigger premature short-circuiting. |
+| **2** | **Wrong Chunk Retrieval** | Small 768-D embedding models can experience semantic drift on short, ambiguous queries. | Implement hybrid search (BM25 keyword matching + Dense Vector retrieval) and re-ranking (Cross-Encoders). |
+| **3** | **Stale Vector Store** | Documents in `knowledge_base/` are modified, but `vector_store.json` still holds old vectors. | Implement document file hashing (`sha256`); trigger automated re-chunking on file modification. |
+| **4** | **Embedding Model Incompatibility** | Changing the active embedding model creates vector space and dimension mismatch crashes. | Store `embed_model_used` metadata inside the vector store; validate on startup. |
+| **5** | **Linear Scan Latency ($O(N)$)** | Comparing the query vector to every single chunk works for 29 chunks, but crawls to a halt for millions of chunks. | Use dedicated Vector Databases (Milvus, Chroma, Pinecone, Qdrant) powered by Approximate Nearest Neighbors (ANN) indexing like HNSW or IVF. |
+
+---
+
+### 5. 💻 Code Walkthrough & Line-by-Line Anatomy
+
+#### A. RAG Engine Service: [rag.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/rag.py)
+
+```python
+# Preload chunks into memory once on module import
+CHUNKS = load_chunks()
+
+
+def search(query: str, top_k: int = 2) -> list:
+    """Searches knowledge base chunks and returns top-K results sorted by similarity."""
+    query_vector = get_embedding(query)
+    results = []
+
+    for chunk in CHUNKS:
+        score = cosine_similarity(query_vector, chunk["vector"])
+        results.append({
+            "score": float(score),
+            "source": chunk["source"],
+            "chunk_id": chunk["chunk_id"],
+            "text": chunk["text"],
+            "size": len(chunk["text"])
+        })
+
+    results.sort(key=lambda rec: rec["score"], reverse=True)
+    return results[:top_k]
+```
+
+- **`CHUNKS = load_chunks()`:** Executes once when `rag.py` is imported. If `vector_store.json` exists, loads all precomputed vectors instantly into RAM.
+- **`search(query, top_k=2)`:** Takes raw user query string, computes its 768-D vector, calculates cosine similarity against all chunks, and returns the top-$K$ scoring candidates.
+
+---
+
+#### B. Tool Definition & Formatting: [tools.py](file:///c:/Users/Vikash%20Tiwari/Desktop/Documents/Abhishek%20Tiwari/2028/ai-agent-scratch/tools.py)
+
+```python
+from rag import search
+
+def search_knowledge_base(query: str) -> str:
+    """Searches the company knowledge base for policy or procedural information."""
+    log(f"🔍 Knowledge Base Search: '{query}'")
+    results = search(query, top_k=2)
+
+    for r in results:
+        log(f"   [{r['score']:.2f}] - {r['source']} #{r['chunk_id']}")
+
+    blocks = []
+    for r in results:
+        header = f"[{r['source']} #{r['chunk_id']}]"
+        block = f"{header}\n{r['text']}"
+        blocks.append(block)
+
+    return "\n\n".join(blocks)
+```
+
+- **`results = search(query, top_k=2)`:** Queries the RAG engine for the top 2 most semantically aligned chunks.
+- **`header = f"[{r['source']} #{r['chunk_id']}]"`:** Labels every text block with its originating filename and chunk index so the model can cite its sources.
+- **`"\n\n".join(blocks)`:** Assembles all candidate blocks into a single structured string separated by double newlines.
+
+---
+
+### 6. 🧩 Before vs. After Code Evolution Matrix
+
+| Architectural Dimension | Phase 11 (Module 15: Standalone Script) | Phase 12 (Module 16: Agentic RAG) | Engineering Advantage |
+| :--- | :--- | :--- | :--- |
+| **Execution Trigger** | Hardcoded test query in a scratch script | Autonomous model-driven tool call | Model decides dynamically whether RAG is necessary. |
+| **Code Organization** | Everything in one monolithic script (`chunk_search.py`) | Decoupled across `rag.py`, `tools.py`, and `simple_ai_assistant.py` | Strict adherence to Single Responsibility Principle. |
+| **Agent Loop Integration** | None (Isolated prototype) | Fully integrated into multi-turn conversational loop | RAG seamlessly coexists with weather, time, and general chat. |
+| **Context Assembly** | Printed raw dictionaries to terminal | Annotated block string with headers (`[file #id]`) | Enables the model to read clean Markdown and cite sources. |
+| **Source Attribution** | None | Model explicitly cites `(leave_policy.txt #3)` | Full traceability and verifiable grounding for enterprise audit. |
+
+---
+
+### 7. 🏆 The 3 Golden Takeaways
+
+1. **RAG is Just Another Tool:** The cleanest way to build knowledge-grounded AI agents is to treat RAG as a callable function tool. The LLM handles the intent detection; the RAG tool handles retrieval.
+2. **Decoupled Architecture Prevents Spaghetti Code:** Keep the RAG engine (`rag.py`), tool definitions (`tools.py`), and conversational loop (`simple_ai_assistant.py`) strictly isolated. Adding new knowledge capabilities should never break the agent loop.
+3. **Always Format Context with Source Metadata:** Never feed raw unlabelled text to an LLM. Framing chunks with clear headers (`[filename #chunk_id]`) empowers the model to generate accurate answers with verifiable citations.
+
+---
+
+### 8. ⚠️ Common Traps & Real-World Gotchas
+
+1. **The Premature Short-Circuit Trap in System Prompts:**  
+   - *Problem:* Instructing small models with *"If the returned text does not contain the answer, say 'I could not find it'"* causes small models (`1.5B`) to emit that phrase immediately on turn 1 without calling the tool!  
+   - *Cause:* Small models lack deep reasoning and evaluate conditional rules literally on initial input.  
+   - *Fix:* State positive tool-trigger rules clearly: *"Use search_knowledge_base whenever the user asks about policies."*
+
+2. **The Multiple Tool Selection Conflict:**  
+   - *Problem:* Asking *"What is the weather and maternity leave policy?"* causes the model to get confused or drop one tool.  
+   - *Cause:* Small models struggle with parallel tool calling in a single turn.  
+   - *Fix:* Rely on the chained agent loop (`MAX_STEPS = 5`), allowing the model to call one tool per step sequentially.
+
+3. **The Module Circular Import Trap:**  
+   - *Problem:* `rag.py` imports `tools.py` while `tools.py` imports `rag.py`, crashing Python on startup with `ImportError`.  
+   - *Fix:* Maintain strict top-down dependency hierarchy: `simple_ai_assistant` $\rightarrow$ `tools` $\rightarrow$ `rag` $\rightarrow$ `utilities`.
+
+---
+
+### 9. 🎓 Technical Interview Flashcards
+
+**Q1: What is "Agentic RAG" and how does it differ from traditional RAG?**  
+> **Answer:** Traditional RAG statically retrieves documents for every single query before passing context to the LLM. In contrast, Agentic RAG models retrieval as an autonomous tool. The LLM evaluates user intent and dynamically decides whether to search internal documentation, call external APIs, or respond directly from pre-trained knowledge, enabling multi-step, multi-source reasoning.
+
+**Q2: Why should chunk text be returned to the LLM with structured metadata headers?**  
+> **Answer:** Returning chunks with metadata headers (such as `[source_filename #chunk_id]`) preserves passage provenance. It prevents cross-document fact contamination, allows the LLM to resolve contradictory policies across documents, and enables the model to cite exact sources in its final response for auditability and trust.
+
+**Q3: How does linear cosine similarity search scale as an enterprise knowledge base grows to millions of chunks?**  
+> **Answer:** Linear pairwise cosine similarity has an $O(N \cdot D)$ time complexity, where $N$ is the number of chunks and $D$ is embedding dimensions. For millions of chunks, brute-force scanning causes unacceptable latency. Production systems replace linear scans with Vector Databases using Approximate Nearest Neighbor (ANN) index structures like Hierarchical Navigable Small World (HNSW) graphs or Inverted File with Product Quantization (IVF-PQ) to achieve sub-millisecond retrieval.
+
+---
+
+### 10. 🧪 Live Verification & Test Matrix
+
+Tested on local **Intel Core i3** running `qwen2.5:1.5b` and `nomic-embed-text` with Ollama:
+
+| Test Scenario / Input | Internal Execution & Tool Logs | Assistant Grounded Response Observed | Status |
+| :--- | :--- | :--- | :---: |
+| **Company Policy Query:**<br>`"What are the benefits of maternity leaves in Zorvex Technologies?"` | `🔧 search_knowledge_base({"query": "maternity leave benefits"})`<br>`↳ [leave_policy.txt #3] (Score: 0.78)`<br>`↳ [medical_policy.txt #3] (Score: 0.66)` | *"In Zorvex Technologies, maternity leave is 26 weeks of paid leave, and paternity leave is 10 working days, which must be taken within 3 months of the child's birth. The policy covers up to 50,000 rupees for normal delivery and 75,000 rupees for caesarean section expenses..."* | ✅ **PASS** |
+| **Existing Weather Tool:**<br>`"What is the weather in Pune?"` | `🔧 get_city_weather({"city": "Pune"})`<br>`↳ Pune: ☀️ +28°C` | *"The weather in Pune is currently ☀️ with a temperature of +28°C."* | ✅ **PASS** |
+| **Multi-Turn State Coexistence:**<br>Interleaving company policy and weather queries | Autonomous tool dispatcher routed each query to its respective handler without interference | Both company citations and weather readings returned cleanly | ✅ **PASS** |
 
 ---

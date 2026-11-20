@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 import requests
 from utilities.utilities import log
+from rag import search
 
 # ---------------------------------------------------------
 # 1. Actual Python Functions (Executed locally by our code)
@@ -25,6 +26,23 @@ def get_city_weather(city: str):
 def get_user_city():
     """Returns the city where the user lives."""
     return "Bangalore"
+
+
+def search_knowledge_base(query: str) -> str:
+    """Searches the company knowledge base for policy or procedural information."""
+    log(f"🔍 Knowledge Base Search: '{query}'")
+    results = search(query, top_k=2)
+
+    for r in results:
+        log(f"   [{r['score']:.2f}] - {r['source']} #{r['chunk_id']}")
+
+    blocks = []
+    for r in results:
+        header = f"[{r['source']} #{r['chunk_id']}]"
+        block = f"{header}\n{r['text']}"
+        blocks.append(block)
+
+    return "\n\n".join(blocks)
 
 
 # ---------------------------------------------------------
@@ -72,6 +90,23 @@ TOOLS = [
                 "required": []
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "search_knowledge_base",
+            "description": "Searches the Zorvex Technologies company knowledge base (leave policy, medical policy, HR, hiring, tech processes, incident reports, and travel expense policies). Use for any questions about company policies or documents. Returns the most relevant passages with their source.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "The search query to look up in company policies (e.g., 'maternity leave benefits', 'hospitalization reimbursement limit')."
+                    }
+                },
+                "required": ["query"]
+            }
+        }
     }
 ]
 
@@ -82,7 +117,8 @@ TOOLS = [
 FUNCTION_NAME_TO_FUNCTION_MAP = {
     "get_current_time": get_current_time,
     "get_city_weather": get_city_weather,
-    "get_user_city": get_user_city
+    "get_user_city": get_user_city,
+    "search_knowledge_base": search_knowledge_base
 }
 
 
